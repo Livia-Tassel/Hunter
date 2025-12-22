@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Enhanced 2D Graphical Game with Pixel Art, Animations, Achievements, Crafting, Quests"""
 import pygame
 import sys
