@@ -1,0 +1,113 @@
+{
+    "player_room_id": "cabin",
+    "player_inventory": [
+        "古老的地图",
+        "点燃的火把",
+        "生锈的钥匙"
+    ],
+    "player_health": 100,
+    "player_score": 0,
+    "room_states": {
+        "cabin": {
+            "items_in_room": [],
+            "properties": {
+                "has_fireplace": true,
+                "table_searched": false,
+                "fireplace_lit": true
+            },
+            "exits": {
+                "北": "forest_path",
+                "东": "dark_cellar_entrance"
+            },
+            "description": "废弃小屋。\n你发现自己在一个摇摇欲坠的废弃小屋里。尘土飞扬，空气中弥漫着霉味。角落里有一个冰冷的[壁炉]。一张破旧的[桌子]放在房间中央。",
+            "visited_art_shown": false,
+            "ambient_sound": "ambient_windy"
+        },
+        "forest_path": {
+            "items_in_room": [],
+            "properties": {
+                "leaves_searched": true,
+                "key_found_here": true
+            },
+            "exits": {
+                "南": "cabin",
+                "北": "deep_forest",
+                "西": "river_bank"
+            },
+            "description": "森林小径。\n你来到一条蜿蜒的森林小径。高大的树木遮天蔽日。地上散落着一些[枯叶]。",
+            "visited_art_shown": false,
+            "ambient_sound": "ambient_forest"
+        },
+        "dark_cellar_entrance": {
+            "items_in_room": [],
+            "properties": {
+                "requires_light": true,
+                "door_locked": true
+            },
+            "exits": {
+                "西": "cabin"
+            },
+            "description": "黑暗地下室入口。\n楼梯很暗。 一扇[木门]紧锁。 现在可用[点燃的火把]照路！ 扶手有蜘蛛网。",
+            "visited_art_shown": false,
+            "ambient_sound": null
+        },
+        "cellar": {
+            "items_in_room": [
+                "远古神像"
+            ],
+            "properties": {
+                "crates_searched": false,
+                "crowbar_found_here": true
+            },
+            "exits": {
+                "上": "dark_cellar_entrance"
+            },
+            "description": "阴暗的地下室。\n地下室里阴冷潮湿。墙角堆放着一些破旧的[木箱]。一个[远古神像]放在一个石台上。",
+            "visited_art_shown": false,
+            "ambient_sound": "ambient_cave"
+        },
+        "deep_forest": {
+            "items_in_room": [
+                "治疗药水"
+            ],
+            "properties": {
+                "cave_hidden": true
+            },
+            "exits": {
+                "南": "forest_path",
+                "进入洞穴": "cave_entrance"
+            },
+            "description": "森林深处。\n你越往森林深处走，光线就越暗。这里似乎有一个隐蔽的[洞穴入口]。",
+            "visited_art_shown": false,
+            "ambient_sound": "ambient_forest"
+        },
+        "cave_entrance": {
+            "items_in_room": [
+                "布满灰尘的书"
+            ],
+            "properties": {
+                "symbols_deciphered": false
+            },
+            "exits": {
+                "离开洞穴": "deep_forest",
+                "深入洞穴": "cave_chamber"
+            },
+            "description": "洞穴入口。\n这是一个黑暗的洞穴入口，里面吹出阵阵冷风。洞壁上刻着一些奇怪的[符号]。",
+            "visited_art_shown": false,
+            "ambient_sound": "ambient_cave"
+        },
+        "cave_chamber": {
+            "items_in_room": [],
+            "properties": {
+                "treasure_found": false,
+                "coffin_opened": false
+            },
+            "exits": {
+                "离开密室": "cave_entrance"
+            },
+            "description": "洞穴密室。\n在洞穴的深处，你发现了一个宽敞的密室。密室中央有一个古老的[石棺]。旁边散落着一些[金币]。",
+            "visited_art_shown": false,
+            "ambient_sound": "ambient_cave"
+        }
+    }
+}

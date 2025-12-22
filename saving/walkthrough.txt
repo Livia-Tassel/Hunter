@@ -1,0 +1,43 @@
+look
+examine 斗桨先生
+help
+examine 壁炉
+take 火把
+take 古老的地图
+inventory
+use 火把 on 壁炉
+examine 壁炉
+go 北
+look
+search 枯叶
+take 生锈的钥匙
+go 南
+look
+save
+go 西
+look
+load
+go 东
+look
+examine 门
+unlock 门 with 生锈的钥匙
+examine 门
+go 下
+look
+take 远古神像
+search 木箱
+take 撬棍
+inventory
+go 上
+go 西
+go 北
+go 北
+look
+go 进入洞穴
+look
+examine 布满灰尘的书
+take 布满灰尘的书
+inventory
+go 深入洞穴
+look
+use 撬棍 on 石棺
