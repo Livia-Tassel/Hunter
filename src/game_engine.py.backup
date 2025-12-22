@@ -1,31 +1,23 @@
-"""Main game engine with all enhanced features"""
+"""Main game engine"""
 import os
 import time
-from typing import Optional, Dict, List
+from typing import Optional
 from .core.entities import Player
 from .ui.terminal_ui import ui
 from .systems.audio import init_audio
 from .systems.game_state import GameState
 from .systems.combat import CombatSystem, QuestSystem, Quest
-from .systems.achievements import AchievementSystem, CraftingSystem, init_crafting_recipes
 from .content.game_data import create_items, create_npcs, create_rooms, ASCII_ARTS
 
 class GameEngine:
-    def __init__(self, save_dir: str, sounds_dir: str):
-        self.save_dir = save_dir
+    def __init__(self, save_file: str, sounds_dir: str):
+        self.save_file = save_file
         self.sounds_dir = sounds_dir
         self.audio = init_audio(sounds_dir)
-        self.game_state = GameState(save_dir)
+        self.game_state = GameState(save_file)
         self.combat_system = CombatSystem(self.audio)
         self.quest_system = QuestSystem()
-        self.achievement_system = AchievementSystem()
-        self.crafting_system = CraftingSystem()
         self.is_running = True
-        self.command_aliases = {
-            'n': 'go 北', 's': 'go 南', 'e': 'go 东', 'w': 'go 西',
-            't': 'take', 'd': 'drop', 'u': 'use', 'x': 'examine',
-        }
-        self.hints = self._init_hints()
         self._setup_world()
 
     def _setup_world(self):
@@ -33,19 +25,6 @@ class GameEngine:
         self.game_state.npcs = create_npcs()
         self.game_state.rooms = create_rooms(self.game_state.items, self.game_state.npcs)
         self.game_state.player = Player(current_room_id="cabin")
-        init_crafting_recipes(self.crafting_system)
-
-    def _init_hints(self) -> Dict[str, List[str]]:
-        """Initialize contextual hints for each room"""
-        return {
-            "cabin": ["尝试检查壁炉和桌子", "和斗桨先生对话了解更多信息", "别忘了拿走有用的物品"],
-            "forest_path": ["仔细搜索枯叶堆", "森林深处可能有秘密"],
-            "dark_cellar_entrance": ["你需要钥匙和光源", "门可以用钥匙解锁"],
-            "cellar": ["搜索木箱可能有惊喜", "神像看起来很重要"],
-            "deep_forest": ["仔细观察周围环境", "洞穴入口可能被隐藏了"],
-            "cave_entrance": ["洞穴深处可能有宝藏", "注意墙上的符号"],
-            "cave_chamber": ["石棺需要工具才能打开", "这里就是最终目标"],
-        }
 
     def start_game(self):
         ui.clear()
@@ -56,29 +35,10 @@ class GameEngine:
 
         while self.is_running:
             try:
-                # Show status bar
-                player = self.game_state.player
-                current_room = self.game_state.rooms.get(player.current_room_id)
-                if current_room:
-                    ui.print_status_bar(
-                        player.health, player.max_health, player.level,
-                        player.experience, current_room.display_name, player.gold
-                    )
-
                 command = ui.get_input()
                 if command:
-                    # Handle command aliases
-                    if command in self.command_aliases:
-                        command = self.command_aliases[command]
-
                     self.process_command(command)
                     self._check_game_state()
-
-                    # Auto-save check
-                    if self.game_state.should_auto_save():
-                        if self.game_state.auto_save():
-                            ui.print_message("游戏已自动保存", "dim")
-
             except KeyboardInterrupt:
                 ui.print_warning("\n游戏已中断")
                 self.is_running = False
@@ -128,11 +88,6 @@ class GameEngine:
             "quests": lambda: self.quest_system.show_quests(),
             "quit": lambda: self.quit_game(),
             "q": lambda: self.quit_game(),
-            "hint": lambda: self.show_hint(),
-            "map": lambda: self.show_map(),
-            "achievements": lambda: self.show_achievements(),
-            "craft": lambda: self.show_craft_menu(),
-            "travel": lambda: self.fast_travel(target) if target else self.show_travel_menu(),
         }
 
         current_room = self.game_state.rooms.get(self.game_state.player.current_room_id)
@@ -240,13 +195,6 @@ class GameEngine:
             self.audio.play_sound("footsteps_stone", volume=0.5)
 
         player.current_room_id = next_room_id
-        player.visit_room(next_room_id)
-
-        # Check explorer achievement
-        if len(player.visited_rooms) >= len(self.game_state.rooms):
-            if self.achievement_system.unlock("explorer"):
-                ui.print_success("🏆 成就解锁：探险家")
-
         self.look_around()
 
         if next_room.name == "deep_forest" and next_room.properties.get('cave_hidden', True):
@@ -281,16 +229,6 @@ class GameEngine:
         current_room.remove_item(item_to_take.name)
         player.add_to_inventory(item_to_take)
         ui.print_success(f"你将 [{item_to_take.display_name}] 加入了物品栏。")
-
-        # Check achievements
-        if len(player.inventory) >= 10:
-            if self.achievement_system.unlock("collector"):
-                ui.print_success("🏆 成就解锁：收藏家")
-
-        if item_to_take.name == "远古神像":
-            if self.achievement_system.unlock("treasure_hunter"):
-                ui.print_success("🏆 成就解锁：寻宝猎人")
-
         if self.audio:
             self.audio.play_sound("item_pickup")
 
@@ -501,23 +439,18 @@ class GameEngine:
 
     def show_help(self):
         commands = {
-            "go [方向] / n/s/e/w": "向指定方向移动",
+            "go [方向]": "向指定方向移动",
             "look / l": "查看当前环境",
-            "examine [目标] / x": "仔细检查物品或NPC",
+            "examine [目标]": "仔细检查物品或NPC",
             "search [目标]": "搜索特定位置",
-            "take [物品] / t": "拾取物品",
-            "drop [物品] / d": "丢弃物品",
+            "take [物品]": "拾取物品",
+            "drop [物品]": "丢弃物品",
             "inventory / i": "查看物品栏",
-            "use [物品] (on [目标]) / u": "使用物品",
+            "use [物品] (on [目标])": "使用物品",
             "unlock [目标] with [物品]": "用物品解锁",
             "open [目标]": "打开某物",
             "talk to [NPC] (about [话题])": "与NPC对话",
             "quests": "查看任务",
-            "hint": "获取当前位置的提示",
-            "map": "查看地图",
-            "achievements": "查看成就",
-            "craft": "查看合成配方",
-            "travel [地点]": "快速旅行",
             "save": "保存游戏",
             "load": "读取游戏",
             "help / h": "显示帮助",
@@ -525,192 +458,22 @@ class GameEngine:
         }
         ui.print_help(commands)
 
-    def show_hint(self):
-        """Show contextual hint for current room"""
-        player = self.game_state.player
-        current_room = self.game_state.rooms.get(player.current_room_id)
-        if not current_room:
-            return
-
-        hints = self.hints.get(current_room.name, ["探索周围环境，寻找线索"])
-        import random
-        hint = random.choice(hints)
-        ui.print_hint(hint)
-
-    def show_map(self):
-        """Show mini-map of explored areas"""
-        player = self.game_state.player
-        visited = {room_id: True for room_id in player.visited_rooms}
-        ui.print_mini_map(player.current_room_id, visited, {})
-
-    def show_achievements(self):
-        """Show all achievements"""
-        achievements = self.achievement_system.get_all()
-        ui.print_achievements(achievements)
-        unlocked = self.achievement_system.get_unlocked_count()
-        total = len(achievements)
-        ui.print_message(f"\n已解锁: {unlocked}/{total}", "yellow")
-
-    def show_craft_menu(self):
-        """Show crafting menu and handle crafting"""
-        player = self.game_state.player
-        recipes = self.crafting_system.get_available_recipes(player)
-
-        if not recipes:
-            ui.print_warning("没有可用的合成配方")
-            return
-
-        ui.print_crafting_menu(recipes)
-        ui.print_message("\n输入配方编号进行合成，或输入 'cancel' 取消", "white")
-
-        choice = ui.get_input("选择 > ")
-        if choice == "cancel":
-            return
-
-        try:
-            idx = int(choice) - 1
-            if 0 <= idx < len(recipes):
-                recipe_name = list(self.crafting_system.recipes.keys())[idx]
-                result = self.crafting_system.craft(recipe_name, player, self.game_state.items)
-                if result:
-                    player.add_to_inventory(result)
-                    ui.print_success(f"成功合成了 [{result.display_name}]！")
-
-                    # Check crafting achievement
-                    if self.crafting_system.crafted_count >= 5:
-                        if self.achievement_system.unlock("crafter"):
-                            ui.print_success("🏆 成就解锁：工匠")
-
-                    if self.audio:
-                        self.audio.play_sound("puzzle_solve")
-                else:
-                    ui.print_error("合成失败！缺少必要材料。")
-        except (ValueError, IndexError):
-            ui.print_error("无效的选择")
-
-    def show_travel_menu(self):
-        """Show fast travel menu"""
-        player = self.game_state.player
-        ui.print_message("\n[bold cyan]快速旅行[/]", "cyan")
-        ui.print_message("已解锁的地点：", "white")
-
-        for idx, room_id in enumerate(player.visited_rooms, 1):
-            room = self.game_state.rooms.get(room_id)
-            if room:
-                ui.print_message(f"  [{idx}] {room.display_name}", "cyan")
-
-        ui.print_message("\n输入编号进行传送，或输入 'cancel' 取消", "white")
-        choice = ui.get_input("选择 > ")
-
-        if choice == "cancel":
-            return
-
-        try:
-            idx = int(choice) - 1
-            if 0 <= idx < len(player.visited_rooms):
-                target_room_id = player.visited_rooms[idx]
-                self.fast_travel(target_room_id)
-        except (ValueError, IndexError):
-            ui.print_error("无效的选择")
-
-    def fast_travel(self, target_room_id: str):
-        """Fast travel to a visited room"""
-        player = self.game_state.player
-
-        if target_room_id not in player.visited_rooms:
-            ui.print_error("你还没有去过那个地方！")
-            return
-
-        if target_room_id == player.current_room_id:
-            ui.print_warning("你已经在这里了！")
-            return
-
-        target_room = self.game_state.rooms.get(target_room_id)
-        if not target_room:
-            ui.print_error("目标地点不存在！")
-            return
-
-        ui.print_message(f"传送中... . . .", "cyan")
-        time.sleep(0.5)
-        player.current_room_id = target_room_id
-        ui.print_success(f"已传送到 {target_room.display_name}")
-
-        if self.audio:
-            self.audio.play_sound("puzzle_solve")
-
-        self.look_around()
-
     def save_game(self):
-        """Save game with slot selection"""
-        saves = self.game_state.list_saves()
-
-        ui.print_message("\n[bold cyan]保存游戏[/]", "cyan")
-        ui.print_message("选择存档槽位：", "white")
-
-        for save in saves:
-            if save['exists']:
-                ui.print_message(f"  [{save['slot']}] {save['location']} - Lv.{save['level']}", "yellow")
-            else:
-                ui.print_message(f"  [{save['slot']}] <空>", "dim")
-
-        ui.print_message("\n输入槽位编号 (1-3)，或输入 'cancel' 取消", "white")
-        choice = ui.get_input("选择 > ")
-
-        if choice == "cancel":
-            return
-
-        try:
-            slot = int(choice)
-            if 1 <= slot <= 3:
-                if self.game_state.save_game(slot=slot):
-                    ui.print_success(f"游戏进度已保存到槽位 {slot}")
-                    if self.audio:
-                        self.audio.play_sound("puzzle_solve")
-                else:
-                    ui.print_error("保存失败！")
-            else:
-                ui.print_error("无效的槽位编号")
-        except ValueError:
-            ui.print_error("无效的输入")
+        if self.game_state.save_game():
+            ui.print_success(f"游戏进度已保存到 {self.save_file}")
+            if self.audio:
+                self.audio.play_sound("puzzle_solve")
+        else:
+            ui.print_error("保存失败！")
 
     def load_game(self):
-        """Load game with slot selection"""
-        saves = self.game_state.list_saves()
-
-        ui.print_message("\n[bold cyan]读取游戏[/]", "cyan")
-        ui.print_message("选择存档槽位：", "white")
-
-        available_saves = [s for s in saves if s['exists']]
-        if not available_saves:
-            ui.print_warning("没有可用的存档")
-            return
-
-        for save in saves:
-            if save['exists']:
-                ui.print_message(f"  [{save['slot']}] {save['location']} - Lv.{save['level']}", "yellow")
-            else:
-                ui.print_message(f"  [{save['slot']}] <空>", "dim")
-
-        ui.print_message("\n输入槽位编号 (1-3)，或输入 'cancel' 取消", "white")
-        choice = ui.get_input("选择 > ")
-
-        if choice == "cancel":
-            return
-
-        try:
-            slot = int(choice)
-            if 1 <= slot <= 3:
-                if self.game_state.load_game(slot=slot):
-                    ui.print_success("游戏进度已成功读取！")
-                    if self.audio:
-                        self.audio.play_sound("puzzle_solve")
-                    self.look_around()
-                else:
-                    ui.print_error("读取失败！")
-            else:
-                ui.print_error("无效的槽位编号")
-        except ValueError:
-            ui.print_error("无效的输入")
+        if self.game_state.load_game():
+            ui.print_success("游戏进度已成功读取！")
+            if self.audio:
+                self.audio.play_sound("puzzle_solve")
+            self.look_around()
+        else:
+            ui.print_error("读取失败！")
 
     def quit_game(self):
         ui.print_warning("你确定要退出游戏吗？(是/否)")

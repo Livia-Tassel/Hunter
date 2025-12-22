@@ -76,9 +76,13 @@ class Player:
     defense: int = 5
     experience: int = 0
     level: int = 1
+    gold: int = 0
+    visited_rooms: List[str] = field(default_factory=list)
+    actions_count: int = 0
 
     def add_to_inventory(self, item: Item):
         self.inventory.append(item)
+        self.actions_count += 1
 
     def remove_from_inventory(self, item_name: str) -> Optional[Item]:
         item_name_lower = item_name.lower()
@@ -110,3 +114,17 @@ class Player:
         self.strength += 2
         self.defense += 1
         self.intelligence += 1
+
+    def add_gold(self, amount: int):
+        self.gold += amount
+
+    def spend_gold(self, amount: int) -> bool:
+        if self.gold >= amount:
+            self.gold -= amount
+            return True
+        return False
+
+    def visit_room(self, room_id: str):
+        if room_id not in self.visited_rooms:
+            self.visited_rooms.append(room_id)
+        self.actions_count += 1

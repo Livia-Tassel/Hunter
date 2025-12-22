@@ -1,12 +1,12 @@
-"""Enhanced terminal UI using rich library"""
+"""Enhanced UI with status bar, mini-map, and more visualizations"""
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.progress import Progress, BarColumn, TextColumn
 from rich.layout import Layout
 from rich.text import Text
 from rich.live import Live
-from typing import Optional, List
+from rich.columns import Columns
+from typing import Optional, List, Dict
 import time
 
 console = Console()
@@ -15,9 +15,58 @@ class GameUI:
     def __init__(self):
         self.console = console
         self.screen_width = 80
+        self.status_bar_enabled = True
 
     def clear(self):
         self.console.clear()
+
+    def print_status_bar(self, health: int, max_health: int, level: int,
+                        exp: int, location: str, gold: int = 0):
+        """Persistent status bar at top of screen"""
+        hp_percent = health / max_health if max_health > 0 else 0
+        hp_color = "green" if hp_percent > 0.5 else "yellow" if hp_percent > 0.25 else "red"
+
+        status_text = (
+            f"[{hp_color}]❤ {health}/{max_health}[/] | "
+            f"[yellow]⭐ Lv.{level}[/] | "
+            f"[cyan]📍 {location}[/] | "
+            f"[green]💰 {gold}[/] | "
+            f"[blue]✨ {exp} XP[/]"
+        )
+
+        self.console.print(Panel(status_text, style="bold", border_style="cyan", padding=(0, 1)))
+
+    def print_mini_map(self, current_room: str, visited_rooms: Dict[str, bool],
+                       room_connections: Dict[str, List[str]]):
+        """Display mini-map of explored areas"""
+        map_grid = []
+
+        # Simple 3x3 grid representation
+        symbols = {
+            'current': '[bold red]X[/]',
+            'visited': '[green]●[/]',
+            'unexplored': '[dim]?[/]',
+            'empty': ' '
+        }
+
+        # Build map representation
+        map_text = "╔═══╦═══╦═══╗\n"
+        for i in range(3):
+            map_text += "║ "
+            for j in range(3):
+                if i == 1 and j == 1:  # Center is current
+                    map_text += symbols['current']
+                elif visited_rooms.get(f"pos_{i}_{j}", False):
+                    map_text += symbols['visited']
+                else:
+                    map_text += symbols['unexplored']
+                map_text += " ║ "
+            map_text += "\n"
+            if i < 2:
+                map_text += "╠═══╬═══╬═══╣\n"
+        map_text += "╚═══╩═══╩═══╝"
+
+        self.console.print(Panel(map_text, title="[bold cyan]地图[/]", border_style="blue"))
 
     def print_header(self, title: str):
         header = Panel(
@@ -118,6 +167,52 @@ class GameUI:
 
         for cmd, desc in commands.items():
             table.add_row(cmd, desc)
+
+        self.console.print(table)
+
+    def print_achievements(self, achievements: List[tuple]):
+        """Display achievements"""
+        table = Table(title="[bold yellow]🏆 成就[/]", border_style="gold1")
+        table.add_column("成就", style="cyan")
+        table.add_column("描述", style="white")
+        table.add_column("状态", style="green")
+
+        for name, desc, unlocked in achievements:
+            status = "✓ 已解锁" if unlocked else "○ 未解锁"
+            style = "green" if unlocked else "dim"
+            table.add_row(f"[{style}]{name}[/]", f"[{style}]{desc}[/]", f"[{style}]{status}[/]")
+
+        self.console.print(table)
+
+    def print_hint(self, hint: str):
+        """Display contextual hint"""
+        self.console.print(Panel(
+            f"💡 [yellow]{hint}[/]",
+            title="[bold cyan]提示[/]",
+            border_style="yellow"
+        ))
+
+    def print_crafting_menu(self, recipes: List[tuple]):
+        """Display crafting recipes"""
+        table = Table(title="[bold yellow]🔨 合成配方[/]", border_style="blue")
+        table.add_column("配方", style="cyan")
+        table.add_column("材料", style="white")
+        table.add_column("结果", style="green")
+
+        for name, materials, result in recipes:
+            table.add_row(name, materials, result)
+
+        self.console.print(table)
+
+    def print_shop(self, items: List[tuple], gold: int):
+        """Display merchant shop"""
+        table = Table(title=f"[bold yellow]🏪 商店 (你的金币: {gold})[/]", border_style="blue")
+        table.add_column("编号", style="cyan")
+        table.add_column("物品", style="white")
+        table.add_column("价格", style="yellow")
+
+        for idx, (name, price) in enumerate(items, 1):
+            table.add_row(str(idx), name, f"{price} 金币")
 
         self.console.print(table)
 

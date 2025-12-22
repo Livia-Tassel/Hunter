@@ -1,18 +1,59 @@
-"""Game state management and save/load system"""
+"""Enhanced game state management with multi-save and auto-save"""
 import json
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from ..core.entities import Player, Room, Item
 
 class GameState:
-    def __init__(self, save_file: str):
-        self.save_file = save_file
+    def __init__(self, save_dir: str):
+        self.save_dir = save_dir
         self.player: Optional[Player] = None
         self.rooms: Dict[str, Room] = {}
         self.items: Dict[str, Item] = {}
         self.npcs: Dict[str, Any] = {}
+        self.auto_save_interval = 10  # Auto-save every N actions
+        self.last_auto_save = 0
 
-    def save_game(self) -> bool:
+    def get_save_file(self, slot: int = 1) -> str:
+        return os.path.join(self.save_dir, f"save_slot_{slot}.json")
+
+    def list_saves(self) -> List[Dict[str, Any]]:
+        """List all available save slots"""
+        saves = []
+        for slot in range(1, 4):  # 3 save slots
+            save_file = self.get_save_file(slot)
+            if os.path.exists(save_file):
+                try:
+                    with open(save_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        saves.append({
+                            'slot': slot,
+                            'location': data.get('player_room_id', 'Unknown'),
+                            'level': data.get('player_level', 1),
+                            'exists': True
+                        })
+                except Exception:
+                    saves.append({'slot': slot, 'exists': False})
+            else:
+                saves.append({'slot': slot, 'exists': False})
+        return saves
+
+    def should_auto_save(self) -> bool:
+        """Check if auto-save should trigger"""
+        if not self.player:
+            return False
+        if self.player.actions_count - self.last_auto_save >= self.auto_save_interval:
+            return True
+        return False
+
+    def auto_save(self) -> bool:
+        """Perform auto-save"""
+        if self.save_game(slot=0):  # Slot 0 is auto-save
+            self.last_auto_save = self.player.actions_count if self.player else 0
+            return True
+        return False
+
+    def save_game(self, slot: int = 1) -> bool:
         if not self.player:
             return False
 
@@ -27,6 +68,9 @@ class GameState:
             "player_strength": self.player.strength,
             "player_defense": self.player.defense,
             "player_intelligence": self.player.intelligence,
+            "player_gold": self.player.gold,
+            "player_visited_rooms": self.player.visited_rooms,
+            "player_actions_count": self.player.actions_count,
             "room_states": {}
         }
 
@@ -41,19 +85,21 @@ class GameState:
             }
 
         try:
-            os.makedirs(os.path.dirname(self.save_file), exist_ok=True)
-            with open(self.save_file, 'w', encoding='utf-8') as f:
+            os.makedirs(self.save_dir, exist_ok=True)
+            save_file = self.get_save_file(slot)
+            with open(save_file, 'w', encoding='utf-8') as f:
                 json.dump(game_state, f, indent=4, ensure_ascii=False)
             return True
         except Exception:
             return False
 
-    def load_game(self) -> bool:
-        if not os.path.exists(self.save_file):
+    def load_game(self, slot: int = 1) -> bool:
+        save_file = self.get_save_file(slot)
+        if not os.path.exists(save_file):
             return False
 
         try:
-            with open(self.save_file, 'r', encoding='utf-8') as f:
+            with open(save_file, 'r', encoding='utf-8') as f:
                 game_state = json.load(f)
 
             if not self.player:
@@ -68,6 +114,9 @@ class GameState:
             self.player.strength = game_state.get("player_strength", 10)
             self.player.defense = game_state.get("player_defense", 5)
             self.player.intelligence = game_state.get("player_intelligence", 10)
+            self.player.gold = game_state.get("player_gold", 0)
+            self.player.visited_rooms = game_state.get("player_visited_rooms", [])
+            self.player.actions_count = game_state.get("player_actions_count", 0)
 
             self.player.inventory = [
                 self.items[name.lower()]
