@@ -121,9 +121,11 @@ class Game2DEnhanced:
         self.camera_x = 0
         self.camera_y = 0
 
-        self.font = pygame.font.SysFont('pingfangsc,notosanscjk,microsoftyahei,simsun,arial', 24)
-        self.title_font = pygame.font.SysFont('pingfangsc,notosanscjk,microsoftyahei,simsun,arial', 48)
-        self.small_font = pygame.font.SysFont('pingfangsc,notosanscjk,microsoftyahei,simsun,arial', 18)
+        # Use Chinese-compatible fonts with proper names
+        chinese_fonts = ['PingFang SC', 'Heiti SC', 'STHeiti', 'Arial Unicode MS', 'Arial']
+        self.font = pygame.font.SysFont(chinese_fonts, 24)
+        self.title_font = pygame.font.SysFont(chinese_fonts, 48)
+        self.small_font = pygame.font.SysFont(chinese_fonts, 18)
 
         self.tiles = self._create_world()
         self.items = self._create_items()
