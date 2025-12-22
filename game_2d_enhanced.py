@@ -122,11 +122,29 @@ class Game2DEnhanced:
         self.camera_x = 0
         self.camera_y = 0
 
-        # Use Chinese-compatible fonts with proper names
-        chinese_fonts = ['PingFang SC', 'Heiti SC', 'STHeiti', 'Arial Unicode MS', 'Arial']
-        self.font = pygame.font.SysFont(chinese_fonts, 24)
-        self.title_font = pygame.font.SysFont(chinese_fonts, 48)
-        self.small_font = pygame.font.SysFont(chinese_fonts, 18)
+        # Load Chinese-compatible font - try each until one works
+        font_loaded = False
+        for font_name in ['PingFangSC-Regular', 'STHeiti', 'Heiti SC', 'Arial Unicode MS']:
+            try:
+                test_font = pygame.font.SysFont(font_name, 24)
+                # Test if it can actually render Chinese
+                test_surface = test_font.render('测试', True, (255, 255, 255))
+                if test_surface.get_width() > 0:
+                    self.font = pygame.font.SysFont(font_name, 24)
+                    self.title_font = pygame.font.SysFont(font_name, 48)
+                    self.small_font = pygame.font.SysFont(font_name, 18)
+                    print(f"Using font: {font_name}")
+                    font_loaded = True
+                    break
+            except:
+                continue
+
+        if not font_loaded:
+            # Fallback: use default and warn
+            print("WARNING: No Chinese font found, text may not display correctly")
+            self.font = pygame.font.Font(None, 24)
+            self.title_font = pygame.font.Font(None, 48)
+            self.small_font = pygame.font.Font(None, 18)
 
         self.tiles = self._create_world()
         self.items = self._create_items()
