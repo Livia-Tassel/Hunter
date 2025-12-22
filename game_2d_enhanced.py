@@ -117,7 +117,7 @@ class Game2DEnhanced:
         self.clock = pygame.time.Clock()
         self.running = True
 
-        self.player = Player(x=400, y=300)
+        self.player = Player(x=640, y=448)  # Start inside cabin (tile 20, 14)
         self.camera_x = 0
         self.camera_y = 0
 
