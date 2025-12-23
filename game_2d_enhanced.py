@@ -41,6 +41,16 @@ class Quest:
     completed: bool = False
 
 @dataclass
+class GameRoom:
+    id: str
+    name: str
+    tiles: List[List[int]]
+    spawn_x: int
+    spawn_y: int
+    exits: Dict[str, Tuple[str, int, int]] = field(default_factory=dict)
+    properties: Dict[str, any] = field(default_factory=dict)
+
+@dataclass
 class Recipe:
     id: str
     name: str
@@ -76,7 +86,8 @@ class NPC:
     y: float
     name: str
     color: Tuple[int, int, int]
-    dialogue: str
+    dialogue: Dict[str, str]
+    current_topic: str = "default"
 
 class SpriteGenerator:
     """Generate simple pixel art sprites"""
@@ -118,18 +129,17 @@ class Game2DEnhanced:
         self.clock = pygame.time.Clock()
         self.running = True
 
-        self.player = Player(x=640, y=448)  # Start inside cabin (tile 20, 14)
+        self.player = Player(x=320, y=320)
         self.camera_x = 0
         self.camera_y = 0
 
-        # Load Chinese-compatible font - use actual pygame font names
+        # Load Chinese-compatible font
         font_loaded = False
         for font_name in ['stheitimedium', 'stheitilight', 'pingfangsc', 'notosanssc']:
             try:
                 test_font = pygame.font.SysFont(font_name, 24)
-                # Test if it can actually render Chinese
                 test_surface = test_font.render('测试', True, (255, 255, 255))
-                if test_surface.get_width() > 20:  # Real Chinese chars should be wider
+                if test_surface.get_width() > 20:
                     self.font = pygame.font.SysFont(font_name, 24)
                     self.title_font = pygame.font.SysFont(font_name, 48)
                     self.small_font = pygame.font.SysFont(font_name, 18)
@@ -145,7 +155,8 @@ class Game2DEnhanced:
             self.title_font = pygame.font.Font(None, 48)
             self.small_font = pygame.font.Font(None, 18)
 
-        self.tiles = self._create_world()
+        self.rooms = self._create_rooms()
+        self.current_room_id = "cabin"
         self.items = self._create_items()
         self.npcs = self._create_npcs()
 
@@ -155,61 +166,86 @@ class Game2DEnhanced:
 
         self.show_dialogue = False
         self.dialogue_text = ""
-        self.dialogue_npc = ""
+        self.dialogue_npc = None
+        self.dialogue_topics = []
         self.show_inventory = False
         self.show_achievements = False
         self.show_crafting = False
         self.show_quests = False
         self.nearby_item = None
+        self.nearby_npc = None
+        self.nearby_interactive = None
+        self.game_won = False
 
         self.sprite_gen = SpriteGenerator()
 
-    def _create_world(self) -> List[List[int]]:
-        world = []
-        for y in range(50):
-            row = []
-            for x in range(60):
-                # Cabin (15-25, 10-18)
-                if 15 <= x <= 25 and 10 <= y <= 18:
-                    if x == 15 or x == 25 or y == 10 or y == 18:
-                        row.append(1)
-                    else:
-                        row.append(2)
-                # Cave area (40-50, 30-40)
-                elif 40 <= x <= 50 and 30 <= y <= 40:
-                    if x == 40 or x == 50 or y == 30 or y == 40:
-                        row.append(1)
-                    else:
-                        row.append(4)  # Cave floor
-                # Forest
-                elif (x + y) % 7 == 0 or (x * 2 + y) % 11 == 0:
-                    row.append(1)
-                # Water
-                elif y > 45:
-                    row.append(3)
-                else:
-                    row.append(0)
-            world.append(row)
-        return world
+    def _create_rooms(self) -> Dict[str, GameRoom]:
+        rooms = {}
+
+        # Cabin - 20x15 tiles
+        cabin_tiles = [[2 if (x > 0 and x < 19 and y > 0 and y < 14) else 1 for x in range(20)] for y in range(15)]
+        rooms["cabin"] = GameRoom("cabin", "废弃小屋", cabin_tiles, 10, 7,
+            {"北": ("forest_path", 10, 13), "东": ("dark_cellar_entrance", 18, 7)},
+            {"fireplace_lit": False, "table_searched": False})
+
+        # Forest Path - 20x15 tiles
+        forest_tiles = [[0 if (x + y) % 5 != 0 else 1 for x in range(20)] for y in range(15)]
+        rooms["forest_path"] = GameRoom("forest_path", "森林小径", forest_tiles, 10, 13,
+            {"南": ("cabin", 10, 1), "北": ("deep_forest", 10, 13)},
+            {"leaves_searched": False})
+
+        # Dark Cellar Entrance - 20x15 tiles
+        cellar_ent_tiles = [[2 if x > 0 and x < 19 and y > 0 and y < 14 else 1 for x in range(20)] for y in range(15)]
+        rooms["dark_cellar_entrance"] = GameRoom("dark_cellar_entrance", "地下室入口", cellar_ent_tiles, 2, 7,
+            {"西": ("cabin", 1, 7), "下": ("cellar", 10, 1)},
+            {"door_locked": True, "requires_light": True})
+
+        # Cellar - 20x15 tiles
+        cellar_tiles = [[4 for x in range(20)] for y in range(15)]
+        rooms["cellar"] = GameRoom("cellar", "阴暗的地下室", cellar_tiles, 10, 1,
+            {"上": ("dark_cellar_entrance", 10, 13)},
+            {"crates_searched": False})
+
+        # Deep Forest - 20x15 tiles
+        deep_forest_tiles = [[0 if (x * y) % 7 != 0 else 1 for x in range(20)] for y in range(15)]
+        rooms["deep_forest"] = GameRoom("deep_forest", "森林深处", deep_forest_tiles, 10, 13,
+            {"南": ("forest_path", 10, 1), "进入洞穴": ("cave_entrance", 10, 7)},
+            {"cave_hidden": False})
+
+        # Cave Entrance - 20x15 tiles
+        cave_ent_tiles = [[4 if x > 2 and x < 17 and y > 2 and y < 12 else 1 for x in range(20)] for y in range(15)]
+        rooms["cave_entrance"] = GameRoom("cave_entrance", "洞穴入口", cave_ent_tiles, 10, 7,
+            {"离开洞穴": ("deep_forest", 10, 7), "深入": ("cave_chamber", 2, 7)},
+            {"symbols_deciphered": False})
+
+        # Cave Chamber - 20x15 tiles
+        cave_chamber_tiles = [[4 for x in range(20)] for y in range(15)]
+        rooms["cave_chamber"] = GameRoom("cave_chamber", "洞穴密室", cave_chamber_tiles, 2, 7,
+            {"离开": ("cave_entrance", 18, 7)},
+            {"coffin_opened": False, "treasure_found": False})
+
+        return rooms
 
     def _create_items(self) -> List[Item]:
         return [
-            Item(x=20*TILE_SIZE, y=14*TILE_SIZE, name="火把", color=YELLOW),
-            Item(x=22*TILE_SIZE, y=14*TILE_SIZE, name="古老的地图", color=BROWN),
-            Item(x=18*TILE_SIZE, y=16*TILE_SIZE, name="生锈的钥匙", color=GRAY),
-            Item(x=10*TILE_SIZE, y=8*TILE_SIZE, name="治疗药水", color=RED),
-            Item(x=45*TILE_SIZE, y=35*TILE_SIZE, name="远古神像", color=BLUE),
-            Item(x=30*TILE_SIZE, y=25*TILE_SIZE, name="撬棍", color=GRAY),
-            Item(x=12*TILE_SIZE, y=20*TILE_SIZE, name="绳子", color=BROWN),
+            Item(x=5*TILE_SIZE, y=7*TILE_SIZE, name="火把", color=YELLOW, picked_up=False),
+            Item(x=15*TILE_SIZE, y=7*TILE_SIZE, name="古老的地图", color=BROWN, picked_up=False),
+            Item(x=10*TILE_SIZE, y=10*TILE_SIZE, name="生锈的钥匙", color=GRAY, picked_up=False),
+            Item(x=10*TILE_SIZE, y=5*TILE_SIZE, name="治疗药水", color=RED, picked_up=False),
+            Item(x=10*TILE_SIZE, y=7*TILE_SIZE, name="远古神像", color=BLUE, picked_up=False),
+            Item(x=5*TILE_SIZE, y=5*TILE_SIZE, name="撬棍", color=GRAY, picked_up=False),
+            Item(x=15*TILE_SIZE, y=10*TILE_SIZE, name="绳子", color=BROWN, picked_up=False),
         ]
 
     def _create_npcs(self) -> List[NPC]:
-        return [
-            NPC(x=18*TILE_SIZE, y=12*TILE_SIZE, name="斗桨先生", color=BLUE,
-                dialogue="年轻人，此地凶险，亦藏机缘。\n按 F 与我对话，WASD 移动，I 物品栏\nC 合成，Q 任务，A 成就"),
-            NPC(x=45*TILE_SIZE, y=32*TILE_SIZE, name="神秘商人", color=ORANGE,
-                dialogue="我有稀有物品出售...\n但你需要足够的金币。"),
-        ]
+        dialogue = {
+            "default": "年轻人，此地凶险，亦藏机缘。\n按数字键选择话题：\n1-宝藏 2-火种 3-此地危险 4-再见",
+            "宝藏": "那远古的秘宝藏匿于洞穴最深处，\n被复杂的机关守护。",
+            "火种": "在黑暗中，火光能成为指引方向的希望。\n壁炉可以点燃火把。",
+            "此地危险": "此地危机四伏，不仅有致命机关，\n更有因秘宝力量而扭曲的生灵徘徊。",
+            "再见": "去吧，愿你好运，年轻人。\n记住，选择比寻找更重要。"
+        }
+        return [NPC(x=5*TILE_SIZE, y=5*TILE_SIZE, name="斗桨先生", color=BLUE, dialogue=dialogue)]
 
     def _init_achievements(self) -> List[Achievement]:
         return [
@@ -301,15 +337,63 @@ class Game2DEnhanced:
                     self.show_crafting = False
                 elif event.key == pygame.K_SPACE:
                     self.show_dialogue = False
+                elif event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4] and self.show_dialogue and self.dialogue_npc:
+                    topics = ["宝藏", "火种", "此地危险", "再见"]
+                    idx = event.key - pygame.K_1
+                    if idx < len(topics):
+                        self.dialogue_text = self.dialogue_npc.dialogue.get(topics[idx], "...")
+
+        self._check_room_transitions()
 
     def _check_collision(self, x: float, y: float) -> bool:
+        room = self.rooms[self.current_room_id]
         tile_x = int(x // TILE_SIZE)
         tile_y = int(y // TILE_SIZE)
-        if 0 <= tile_y < len(self.tiles) and 0 <= tile_x < len(self.tiles[0]):
-            return self.tiles[tile_y][tile_x] in [1, 3]
+        if 0 <= tile_y < len(room.tiles) and 0 <= tile_x < len(room.tiles[0]):
+            return room.tiles[tile_y][tile_x] in [1, 3]
         return True
 
+    def _check_room_transitions(self):
+        room = self.rooms[self.current_room_id]
+        tile_x = int(self.player.x // TILE_SIZE)
+        tile_y = int(self.player.y // TILE_SIZE)
+
+        for exit_name, (next_room, spawn_x, spawn_y) in room.exits.items():
+            if abs(tile_x - spawn_x) < 2 and abs(tile_y - spawn_y) < 2:
+                if next_room == "cellar" and room.properties.get("door_locked"):
+                    if "生锈的钥匙" in self.player.inventory:
+                        room.properties["door_locked"] = False
+                        self.player.inventory.remove("生锈的钥匙")
+                    else:
+                        continue
+                if next_room == "cellar" and room.properties.get("requires_light"):
+                    if "火把" not in self.player.inventory:
+                        continue
+                self.current_room_id = next_room
+                self.player.x = spawn_x * TILE_SIZE
+                self.player.y = spawn_y * TILE_SIZE
+                break
+
     def _handle_f_key(self):
+        room = self.rooms[self.current_room_id]
+
+        # Fireplace interaction
+        if self.current_room_id == "cabin" and "火把" in self.player.inventory:
+            if not room.properties.get("fireplace_lit"):
+                room.properties["fireplace_lit"] = True
+                self.player.inventory.remove("火把")
+                self.player.inventory.append("点燃的火把")
+                return
+
+        # Coffin interaction
+        if self.current_room_id == "cave_chamber" and "撬棍" in self.player.inventory:
+            if not room.properties.get("coffin_opened"):
+                room.properties["coffin_opened"] = True
+                if "远古神像" in self.player.inventory:
+                    self.game_won = True
+                return
+
+        # Item pickup
         for item in self.items:
             if not item.picked_up:
                 dist = ((self.player.x - item.x) ** 2 + (self.player.y - item.y) ** 2) ** 0.5
@@ -320,12 +404,13 @@ class Game2DEnhanced:
                     self._check_quests()
                     return
 
+        # NPC dialogue
         for npc in self.npcs:
             dist = ((self.player.x - npc.x) ** 2 + (self.player.y - npc.y) ** 2) ** 0.5
             if dist < 50:
                 self.show_dialogue = True
-                self.dialogue_text = npc.dialogue
-                self.dialogue_npc = npc.name
+                self.dialogue_text = npc.dialogue["default"]
+                self.dialogue_npc = npc
                 return
 
     def _check_achievements(self):
@@ -358,55 +443,52 @@ class Game2DEnhanced:
 
     def render(self):
         self.screen.fill(BLACK)
+        room = self.rooms[self.current_room_id]
 
         # Render tiles
-        for y, row in enumerate(self.tiles):
+        for y, row in enumerate(room.tiles):
             for x, tile in enumerate(row):
-                screen_x = x * TILE_SIZE - self.camera_x
-                screen_y = y * TILE_SIZE - self.camera_y
-                if -TILE_SIZE < screen_x < SCREEN_WIDTH and -TILE_SIZE < screen_y < SCREEN_HEIGHT:
-                    if tile == 0:
-                        pygame.draw.rect(self.screen, GREEN, (screen_x, screen_y, TILE_SIZE, TILE_SIZE))
-                    elif tile == 1:
-                        pygame.draw.rect(self.screen, DARK_GREEN, (screen_x, screen_y, TILE_SIZE, TILE_SIZE))
-                    elif tile == 2:
-                        pygame.draw.rect(self.screen, BROWN, (screen_x, screen_y, TILE_SIZE, TILE_SIZE))
-                    elif tile == 3:
-                        pygame.draw.rect(self.screen, BLUE, (screen_x, screen_y, TILE_SIZE, TILE_SIZE))
-                    elif tile == 4:
-                        pygame.draw.rect(self.screen, GRAY, (screen_x, screen_y, TILE_SIZE, TILE_SIZE))
+                screen_x = x * TILE_SIZE
+                screen_y = y * TILE_SIZE
+                if tile == 0:
+                    pygame.draw.rect(self.screen, GREEN, (screen_x, screen_y, TILE_SIZE, TILE_SIZE))
+                elif tile == 1:
+                    pygame.draw.rect(self.screen, DARK_GREEN, (screen_x, screen_y, TILE_SIZE, TILE_SIZE))
+                elif tile == 2:
+                    pygame.draw.rect(self.screen, BROWN, (screen_x, screen_y, TILE_SIZE, TILE_SIZE))
+                elif tile == 3:
+                    pygame.draw.rect(self.screen, BLUE, (screen_x, screen_y, TILE_SIZE, TILE_SIZE))
+                elif tile == 4:
+                    pygame.draw.rect(self.screen, GRAY, (screen_x, screen_y, TILE_SIZE, TILE_SIZE))
 
-        # Render items
+        # Render items in current room
         for item in self.items:
             if not item.picked_up:
-                screen_x = item.x - self.camera_x
-                screen_y = item.y - self.camera_y
                 sprite = self.sprite_gen.create_item_sprite(item.color)
-                self.screen.blit(sprite, (screen_x - 8, screen_y - 8))
+                self.screen.blit(sprite, (item.x - 8, item.y - 8))
                 text = self.small_font.render(item.name, True, WHITE)
-                self.screen.blit(text, (screen_x - text.get_width()//2, screen_y - 20))
+                self.screen.blit(text, (item.x - text.get_width()//2, item.y - 20))
 
-        # Render NPCs
-        for npc in self.npcs:
-            screen_x = npc.x - self.camera_x
-            screen_y = npc.y - self.camera_y
-            sprite = self.sprite_gen.create_npc_sprite()
-            self.screen.blit(sprite, (screen_x - 12, screen_y - 12))
-            text = self.small_font.render(npc.name, True, WHITE)
-            self.screen.blit(text, (screen_x - text.get_width()//2, screen_y - 30))
+        # Render NPCs in current room
+        if self.current_room_id == "cabin":
+            for npc in self.npcs:
+                sprite = self.sprite_gen.create_npc_sprite()
+                self.screen.blit(sprite, (npc.x - 12, npc.y - 12))
+                text = self.small_font.render(npc.name, True, WHITE)
+                self.screen.blit(text, (npc.x - text.get_width()//2, npc.y - 30))
 
         # Render player
-        screen_x = self.player.x - self.camera_x
-        screen_y = self.player.y - self.camera_y
         player_sprite = self.sprite_gen.create_player_sprite(self.player.direction, self.player.animation_frame)
-        self.screen.blit(player_sprite, (screen_x - 12, screen_y - 12))
+        self.screen.blit(player_sprite, (self.player.x - 12, self.player.y - 12))
 
         self._render_ui()
         pygame.display.flip()
 
     def _render_ui(self):
+        room = self.rooms[self.current_room_id]
+
         # Status bar
-        status_text = f"HP: {self.player.health}/{self.player.max_health} | Lv.{self.player.level} | Gold: {self.player.gold} | Items: {len(self.player.inventory)}"
+        status_text = f"{room.name} | HP: {self.player.health}/{self.player.max_health} | Items: {len(self.player.inventory)}"
         status = self.font.render(status_text, True, YELLOW)
         pygame.draw.rect(self.screen, BLACK, (0, 0, SCREEN_WIDTH, 35))
         self.screen.blit(status, (10, 5))
@@ -414,6 +496,11 @@ class Game2DEnhanced:
         # Controls
         controls = self.small_font.render("WASD:移动 F:交互 I:物品 C:合成 Q:任务 A:成就 ESC:退出", True, WHITE)
         self.screen.blit(controls, (10, SCREEN_HEIGHT - 25))
+
+        # Win condition
+        if self.game_won:
+            win_text = self.title_font.render("恭喜！你找到了宝藏！", True, YELLOW)
+            self.screen.blit(win_text, (SCREEN_WIDTH//2 - win_text.get_width()//2, SCREEN_HEIGHT//2 - 50))
 
         # Inventory
         if self.show_inventory:
@@ -439,7 +526,8 @@ class Game2DEnhanced:
             s = pygame.Surface((800, 200), pygame.SRCALPHA)
             s.fill((0, 0, 0, 220))
             self.screen.blit(s, (SCREEN_WIDTH//2 - 400, SCREEN_HEIGHT - 250))
-            name = self.font.render(self.dialogue_npc, True, YELLOW)
+            npc_name = self.dialogue_npc.name if self.dialogue_npc else ""
+            name = self.font.render(npc_name, True, YELLOW)
             self.screen.blit(name, (SCREEN_WIDTH//2 - 380, SCREEN_HEIGHT - 235))
             y_offset = SCREEN_HEIGHT - 200
             for line in self.dialogue_text.split('\n'):
