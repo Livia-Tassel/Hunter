@@ -181,6 +181,7 @@ class Game2DEnhanced:
 
         self.sprite_gen = SpriteGenerator()
         self.tts_enabled = True
+        self.transition_cooldown = 0
 
     def _create_rooms(self) -> Dict[str, GameRoom]:
         rooms = {}
@@ -283,6 +284,9 @@ class Game2DEnhanced:
                 pass
 
     def handle_input(self):
+        if self.transition_cooldown > 0:
+            self.transition_cooldown -= 1
+
         keys = pygame.key.get_pressed()
         dx, dy = 0, 0
         moving = False
@@ -368,6 +372,9 @@ class Game2DEnhanced:
         return True
 
     def _check_room_transitions(self):
+        if self.transition_cooldown > 0:
+            return
+
         room = self.rooms[self.current_room_id]
         tile_x = int(self.player.x // TILE_SIZE)
         tile_y = int(self.player.y // TILE_SIZE)
@@ -386,6 +393,7 @@ class Game2DEnhanced:
                 self.current_room_id = next_room
                 self.player.x = spawn_x * TILE_SIZE
                 self.player.y = spawn_y * TILE_SIZE
+                self.transition_cooldown = 30
                 self.screen.fill(BLACK)
                 pygame.display.flip()
                 break
@@ -411,7 +419,7 @@ class Game2DEnhanced:
 
         # Item pickup
         for item in self.items:
-            if not item.picked_up:
+            if not item.picked_up and item.room_id == self.current_room_id:
                 dist = ((self.player.x - item.x) ** 2 + (self.player.y - item.y) ** 2) ** 0.5
                 if dist < 50:
                     item.picked_up = True
