@@ -7,6 +7,7 @@ from ..core.entities import Player, Room, Item
 class GameState:
     def __init__(self, save_dir: str):
         self.save_dir = save_dir
+        os.makedirs(self.save_dir, exist_ok=True)
         self.player: Optional[Player] = None
         self.rooms: Dict[str, Room] = {}
         self.items: Dict[str, Item] = {}
@@ -71,6 +72,7 @@ class GameState:
             "player_gold": self.player.gold,
             "player_visited_rooms": self.player.visited_rooms,
             "player_actions_count": self.player.actions_count,
+            "player_history": self.player.history,
             "room_states": {}
         }
 
@@ -117,6 +119,7 @@ class GameState:
             self.player.gold = game_state.get("player_gold", 0)
             self.player.visited_rooms = game_state.get("player_visited_rooms", [])
             self.player.actions_count = game_state.get("player_actions_count", 0)
+            self.player.history = game_state.get("player_history", self.player.history)
 
             self.player.inventory = [
                 self.items[name.lower()]

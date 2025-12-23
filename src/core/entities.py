@@ -70,7 +70,6 @@ class Player:
     health: int = 100
     max_health: int = 100
     score: int = 0
-    history: List[str] = field(default_factory=list)
     strength: int = 10
     intelligence: int = 10
     defense: int = 5
@@ -79,6 +78,7 @@ class Player:
     gold: int = 0
     visited_rooms: List[str] = field(default_factory=list)
     actions_count: int = 0
+    history: List[str] = field(default_factory=list)
 
     def add_to_inventory(self, item: Item):
         self.inventory.append(item)
@@ -118,13 +118,22 @@ class Player:
     def add_gold(self, amount: int):
         self.gold += amount
 
+    def record_action(self, description: str):
+        """Track recent actions for auto-save and journal display"""
+        self.actions_count += 1
+        self.history.append(description)
+        # Keep the journal reasonably small
+        if len(self.history) > 30:
+            self.history = self.history[-30:]
+
+    def visit_room(self, room_id: str, label: Optional[str] = None):
+        """Mark a room as visited and log it"""
+        if room_id not in self.visited_rooms:
+            self.visited_rooms.append(room_id)
+        self.record_action(f"抵达 {label or room_id}")
+
     def spend_gold(self, amount: int) -> bool:
         if self.gold >= amount:
             self.gold -= amount
             return True
         return False
-
-    def visit_room(self, room_id: str):
-        if room_id not in self.visited_rooms:
-            self.visited_rooms.append(room_id)
-        self.actions_count += 1

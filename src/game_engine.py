@@ -1,5 +1,6 @@
 """Main game engine with all enhanced features"""
 import os
+import random
 import time
 from typing import Optional, Dict, List
 from .core.entities import Player
@@ -20,6 +21,8 @@ class GameEngine:
         self.quest_system = QuestSystem()
         self.achievement_system = AchievementSystem()
         self.crafting_system = CraftingSystem()
+        self.flavor_events = self._init_flavor_events()
+        self.intro_quest: Optional[Quest] = None
         self.is_running = True
         self.command_aliases = {
             'n': 'go 北', 's': 'go 南', 'e': 'go 东', 'w': 'go 西',
@@ -33,6 +36,10 @@ class GameEngine:
         self.game_state.npcs = create_npcs()
         self.game_state.rooms = create_rooms(self.game_state.items, self.game_state.npcs)
         self.game_state.player = Player(current_room_id="cabin")
+        starting_room = self.game_state.rooms.get("cabin")
+        if starting_room:
+            self.game_state.player.visit_room("cabin", starting_room.display_name)
+        self._init_intro_quest()
         init_crafting_recipes(self.crafting_system)
 
     def _init_hints(self) -> Dict[str, List[str]]:
@@ -47,10 +54,69 @@ class GameEngine:
             "cave_chamber": ["石棺需要工具才能打开", "这里就是最终目标"],
         }
 
+    def _init_flavor_events(self) -> Dict[str, List[str]]:
+        """Lightweight flavor events to keep rooms feeling alive"""
+        return {
+            "forest_path": [
+                "一阵风吹过，枯叶沙沙作响，隐约露出斑驳的石板。",
+                "远处传来鸟鸣，又很快归于寂静。"
+            ],
+            "cabin": [
+                "尘土从屋梁落下，仿佛在催促你快些行动。",
+                "斗桨先生的目光似乎在关注你的举动。"
+            ],
+            "cave_entrance": [
+                "洞壁上的符号仿佛在微微发光，像是在呼吸。",
+                "一股凉风拂过，你听到似有若无的回声。"
+            ],
+            "cave_chamber": [
+                "石棺旁的尘埃上有划痕，似乎有人来过。",
+                "金币闪着暗淡的光，隐约映出你的身影。"
+            ],
+        }
+
+    def _init_intro_quest(self):
+        """Add an early quest to guide players through key actions"""
+        quest = Quest(
+            quest_id="intro_path",
+            name="重燃火种",
+            description="点亮光源并找到地下室的秘密。",
+            objectives=["点燃火把", "解锁地下室", "取得远古神像"],
+            rewards={"experience": 60, "score": 20}
+        )
+        self.quest_system.add_quest(quest)
+        self.intro_quest = quest
+
+    def _log_action(self, description: str):
+        """Record an action in the player's journal"""
+        if self.game_state.player:
+            self.game_state.player.record_action(description)
+
+    def _maybe_trigger_flavor_event(self, room):
+        """Show occasional flavor text to keep areas lively"""
+        events = self.flavor_events.get(room.name, [])
+        if events and random.random() < 0.35:
+            ui.print_message(random.choice(events), "dim")
+
+    def _update_intro_objective(self, index: int):
+        """Mark intro quest progress when applicable"""
+        if not self.intro_quest:
+            return
+        before = self.intro_quest.completed_objectives[index] if 0 <= index < len(self.intro_quest.completed_objectives) else False
+        self.intro_quest.complete_objective(index)
+        if self.intro_quest.completed_objectives[index] and not before:
+            self._log_action(f"任务进度：{self.intro_quest.name} - {self.intro_quest.objectives[index]}")
+        if self.intro_quest.is_completed():
+            if self.quest_system.complete_quest(self.intro_quest.quest_id, self.game_state.player):
+                self._log_action(f"任务完成：{self.intro_quest.name}")
+
     def start_game(self):
         ui.clear()
         ui.print_header("迷失的宝藏猎人 (The Lost Treasure Hunter)")
         ui.print_message("欢迎来到《迷失的宝藏猎人》！输入 'help' 查看指令。", "green")
+        if self.intro_quest:
+            ui.print_success(f"新任务：{self.intro_quest.name}")
+            ui.print_message(self.intro_quest.description, "white")
         self.look_around()
         self._handle_initial_dialogue()
 
@@ -132,6 +198,8 @@ class GameEngine:
             "map": lambda: self.show_map(),
             "achievements": lambda: self.show_achievements(),
             "craft": lambda: self.show_craft_menu(),
+            "journal": lambda: self.show_journal(),
+            "rest": lambda: self.rest(),
             "travel": lambda: self.fast_travel(target) if target else self.show_travel_menu(),
         }
 
@@ -199,6 +267,7 @@ class GameEngine:
         exits = list(current_room.exits.keys())
 
         ui.print_room(current_room.display_name, current_room.description, items, npcs, exits)
+        self._maybe_trigger_flavor_event(current_room)
 
     def move_player(self, direction: str):
         player = self.game_state.player
@@ -240,13 +309,14 @@ class GameEngine:
             self.audio.play_sound("footsteps_stone", volume=0.5)
 
         player.current_room_id = next_room_id
-        player.visit_room(next_room_id)
+        player.visit_room(next_room_id, next_room.display_name)
 
         # Check explorer achievement
         if len(player.visited_rooms) >= len(self.game_state.rooms):
             if self.achievement_system.unlock("explorer"):
                 ui.print_success("🏆 成就解锁：探险家")
 
+        self._log_action(f"移动至 {next_room.display_name}")
         self.look_around()
 
         if next_room.name == "deep_forest" and next_room.properties.get('cave_hidden', True):
@@ -281,6 +351,7 @@ class GameEngine:
         current_room.remove_item(item_to_take.name)
         player.add_to_inventory(item_to_take)
         ui.print_success(f"你将 [{item_to_take.display_name}] 加入了物品栏。")
+        self._log_action(f"拾取 {item_to_take.display_name}")
 
         # Check achievements
         if len(player.inventory) >= 10:
@@ -290,6 +361,7 @@ class GameEngine:
         if item_to_take.name == "远古神像":
             if self.achievement_system.unlock("treasure_hunter"):
                 ui.print_success("🏆 成就解锁：寻宝猎人")
+            self._update_intro_objective(2)
 
         if self.audio:
             self.audio.play_sound("item_pickup")
@@ -304,6 +376,7 @@ class GameEngine:
         if item:
             current_room.add_item(item)
             ui.print_message(f"你丢下了 [{item.display_name}].", "white")
+            self._log_action(f"丢弃 {item.display_name} 在 {current_room.display_name}")
         else:
             ui.print_error(f"物品栏里没有 '{item_name}'。")
 
@@ -331,6 +404,8 @@ class GameEngine:
                 current_room.properties["fireplace_lit"] = True
                 player.remove_from_inventory(item.name)
                 player.add_to_inventory(self.game_state.items["点燃的火把"])
+                self._log_action("点燃了火把")
+                self._update_intro_objective(0)
                 if self.audio:
                     self.audio.play_sound("fire_crackle")
                 return
@@ -340,6 +415,7 @@ class GameEngine:
             ui.print_success("你喝下治疗药水，好多了！")
             ui.print_message(f"生命值: {player.health}/{player.max_health}", "green")
             player.remove_from_inventory(item.name)
+            self._log_action("使用治疗药水")
             if self.audio:
                 self.audio.play_sound("item_pickup")
             return
@@ -349,6 +425,7 @@ class GameEngine:
                 ui.print_success("你用[撬棍]撬开了[石棺]！")
                 ui.print_message("里面是空的！旁边有些[金币]。", "white")
                 current_room.properties['coffin_opened'] = True
+                self._log_action("撬开石棺")
                 if self.audio:
                     self.audio.play_sound("puzzle_solve")
                 return
@@ -403,6 +480,7 @@ class GameEngine:
                 if key and not current_room.has_item(key.name) and not player.has_item(key.name):
                     current_room.add_item(key)
                     ui.print_success("在枯叶下，你发现了一把[生锈的钥匙]！")
+                    self._log_action("在枯叶堆找到生锈的钥匙")
                     if self.audio:
                         self.audio.play_sound("item_pickup")
                 return
@@ -415,6 +493,7 @@ class GameEngine:
                 if crowbar and not current_room.has_item(crowbar.name) and not player.has_item(crowbar.name):
                     current_room.add_item(crowbar)
                     ui.print_success("在一个箱子里找到了一根[撬棍]！")
+                    self._log_action("在地下室木箱找到撬棍")
                     if self.audio:
                         self.audio.play_sound("item_pickup")
                 return
@@ -438,6 +517,7 @@ class GameEngine:
 
         dialogue = npc.talk(topic)
         ui.print_dialogue(npc.name, dialogue)
+        self._log_action(f"与 {npc.name} 对话")
 
         if self.audio and npc.tts_voice_name:
             self.audio.speak_mac(dialogue, npc.tts_voice_name)
@@ -464,6 +544,8 @@ class GameEngine:
                     ui.print_success("你用[生锈的钥匙]打开了[门]！")
                     current_room.properties['door_locked'] = False
                     current_room.add_exit("下", "cellar")
+                    self._log_action("解锁地下室入口")
+                    self._update_intro_objective(1)
                     if self.audio:
                         self.audio.play_sound("door_unlock")
                 else:
@@ -517,6 +599,8 @@ class GameEngine:
             "map": "查看地图",
             "achievements": "查看成就",
             "craft": "查看合成配方",
+            "journal": "查看最近的冒险记录",
+            "rest": "在安全的地方休息恢复生命",
             "travel [地点]": "快速旅行",
             "save": "保存游戏",
             "load": "读取游戏",
@@ -633,12 +717,43 @@ class GameEngine:
         ui.print_message(f"传送中... . . .", "cyan")
         time.sleep(0.5)
         player.current_room_id = target_room_id
+        player.visit_room(target_room_id, target_room.display_name)
         ui.print_success(f"已传送到 {target_room.display_name}")
+        self._log_action(f"快速旅行到 {target_room.display_name}")
 
         if self.audio:
             self.audio.play_sound("puzzle_solve")
 
         self.look_around()
+
+    def show_journal(self):
+        """Display recent action log"""
+        player = self.game_state.player
+        entries = player.history[-10:]
+        if not entries:
+            ui.print_warning("暂时没有可显示的冒险记录。")
+            return
+        ui.print_journal(entries)
+
+    def rest(self):
+        """Rest to recover health when safe"""
+        player = self.game_state.player
+        current_room = self.game_state.rooms.get(player.current_room_id)
+        if not current_room:
+            return
+
+        if current_room.name != "cabin":
+            ui.print_warning("这里不安全，无法放心休息。")
+            return
+
+        heal_amount = 25 if current_room.properties.get("fireplace_lit") else 15
+        before = player.health
+        player.heal(heal_amount)
+        recovered = player.health - before
+        ui.print_success(f"你休息片刻，恢复了 {recovered} 点生命值。")
+        self._log_action("在小屋休息恢复体力")
+        if self.audio:
+            self.audio.play_sound("fire_crackle")
 
     def save_game(self):
         """Save game with slot selection"""

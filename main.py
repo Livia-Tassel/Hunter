@@ -12,10 +12,9 @@ def main():
     save_dir = os.path.join(script_dir, "saving")
     os.makedirs(save_dir, exist_ok=True)
 
-    save_file = os.path.join(save_dir, "adventure_save.json")
     sounds_dir = os.path.join(script_dir, "sounds")
 
-    game = GameEngine(save_file, sounds_dir)
+    game = GameEngine(save_dir, sounds_dir)
     game.start_game()
 
 if __name__ == "__main__":

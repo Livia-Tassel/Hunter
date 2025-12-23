@@ -228,4 +228,15 @@ class GameUI:
     def print_warning(self, message: str):
         self.console.print(f"[bold yellow]⚠[/] {message}")
 
+    def print_journal(self, entries: List[str]):
+        """Display recent journal entries"""
+        table = Table(title="[bold yellow]冒险日志[/]", border_style="cyan")
+        table.add_column("#", style="dim", width=4)
+        table.add_column("事件", style="white")
+
+        for idx, entry in enumerate(entries, 1):
+            table.add_row(str(idx), entry)
+
+        self.console.print(table)
+
 ui = GameUI()
