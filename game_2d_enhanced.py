@@ -89,6 +89,7 @@ class NPC:
     name: str
     color: Tuple[int, int, int]
     dialogue: Dict[str, str]
+    room_id: str
     current_topic: str = "default"
 
 class SpriteGenerator:
@@ -131,9 +132,10 @@ class Game2DEnhanced:
         self.clock = pygame.time.Clock()
         self.running = True
 
-        self.player = Player(x=320, y=320)
-        self.camera_x = 0
-        self.camera_y = 0
+        self.rooms = self._create_rooms()
+        self.current_room_id = "cabin"
+        cabin_spawn = self.rooms["cabin"]
+        self.player = Player(x=cabin_spawn.spawn_x * TILE_SIZE, y=cabin_spawn.spawn_y * TILE_SIZE)
 
         # Load Chinese-compatible font
         font_loaded = False
@@ -213,12 +215,12 @@ class Game2DEnhanced:
         # Deep Forest - 20x15 tiles
         deep_forest_tiles = [[0 if (x * y) % 7 != 0 else 1 for x in range(20)] for y in range(15)]
         rooms["deep_forest"] = GameRoom("deep_forest", "森林深处", deep_forest_tiles, 10, 13,
-            {"南": ("forest_path", 10, 1), "进入洞穴": ("cave_entrance", 10, 7)},
+            {"南": ("forest_path", 10, 1), "进入洞穴": ("cave_entrance", 10, 10)},
             {"cave_hidden": False})
 
         # Cave Entrance - 20x15 tiles
         cave_ent_tiles = [[4 if x > 2 and x < 17 and y > 2 and y < 12 else 1 for x in range(20)] for y in range(15)]
-        rooms["cave_entrance"] = GameRoom("cave_entrance", "洞穴入口", cave_ent_tiles, 10, 7,
+        rooms["cave_entrance"] = GameRoom("cave_entrance", "洞穴入口", cave_ent_tiles, 10, 10,
             {"离开洞穴": ("deep_forest", 10, 7), "深入": ("cave_chamber", 2, 7)},
             {"symbols_deciphered": False})
 
@@ -249,7 +251,7 @@ class Game2DEnhanced:
             "此地危险": "此地危机四伏，不仅有致命机关，\n更有因秘宝力量而扭曲的生灵徘徊。",
             "再见": "去吧，愿你好运，年轻人。\n记住，选择比寻找更重要。"
         }
-        return [NPC(x=5*TILE_SIZE, y=5*TILE_SIZE, name="斗桨先生", color=BLUE, dialogue=dialogue)]
+        return [NPC(x=5*TILE_SIZE, y=5*TILE_SIZE, name="斗桨先生", color=BLUE, dialogue=dialogue, room_id="cabin")]
 
     def _init_achievements(self) -> List[Achievement]:
         return [
@@ -321,9 +323,6 @@ class Game2DEnhanced:
             self.player.x = new_x
             self.player.y = new_y
 
-        self.camera_x = self.player.x - SCREEN_WIDTH // 2
-        self.camera_y = self.player.y - SCREEN_HEIGHT // 2
-
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
@@ -388,7 +387,7 @@ class Game2DEnhanced:
                     else:
                         continue
                 if next_room == "cellar" and room.properties.get("requires_light"):
-                    if "火把" not in self.player.inventory:
+                    if "点燃的火把" not in self.player.inventory:
                         continue
                 self.current_room_id = next_room
                 self.player.x = spawn_x * TILE_SIZE
@@ -403,7 +402,9 @@ class Game2DEnhanced:
 
         # Fireplace interaction
         if self.current_room_id == "cabin" and "火把" in self.player.inventory:
-            if not room.properties.get("fireplace_lit"):
+            fireplace_x, fireplace_y = 3 * TILE_SIZE, 3 * TILE_SIZE
+            dist = ((self.player.x - fireplace_x) ** 2 + (self.player.y - fireplace_y) ** 2) ** 0.5
+            if dist < 80 and not room.properties.get("fireplace_lit"):
                 room.properties["fireplace_lit"] = True
                 self.player.inventory.remove("火把")
                 self.player.inventory.append("点燃的火把")
@@ -411,7 +412,9 @@ class Game2DEnhanced:
 
         # Coffin interaction
         if self.current_room_id == "cave_chamber" and "撬棍" in self.player.inventory:
-            if not room.properties.get("coffin_opened"):
+            coffin_x, coffin_y = 10 * TILE_SIZE, 7 * TILE_SIZE
+            dist = ((self.player.x - coffin_x) ** 2 + (self.player.y - coffin_y) ** 2) ** 0.5
+            if dist < 80 and not room.properties.get("coffin_opened"):
                 room.properties["coffin_opened"] = True
                 if "远古神像" in self.player.inventory:
                     self.game_won = True
@@ -430,13 +433,14 @@ class Game2DEnhanced:
 
         # NPC dialogue
         for npc in self.npcs:
-            dist = ((self.player.x - npc.x) ** 2 + (self.player.y - npc.y) ** 2) ** 0.5
-            if dist < 50:
-                self.show_dialogue = True
-                self.dialogue_text = npc.dialogue["default"]
-                self.dialogue_npc = npc
-                self._speak_text(self.dialogue_text)
-                return
+            if npc.room_id == self.current_room_id:
+                dist = ((self.player.x - npc.x) ** 2 + (self.player.y - npc.y) ** 2) ** 0.5
+                if dist < 50:
+                    self.show_dialogue = True
+                    self.dialogue_text = npc.dialogue["default"]
+                    self.dialogue_npc = npc
+                    self._speak_text(self.dialogue_text)
+                    return
 
     def _check_achievements(self):
         if len(self.player.inventory) >= 10:
@@ -460,7 +464,7 @@ class Game2DEnhanced:
     def _check_nearby_item(self):
         self.nearby_item = None
         for item in self.items:
-            if not item.picked_up:
+            if not item.picked_up and item.room_id == self.current_room_id:
                 dist = ((self.player.x - item.x) ** 2 + (self.player.y - item.y) ** 2) ** 0.5
                 if dist < 50:
                     self.nearby_item = item
@@ -503,8 +507,8 @@ class Game2DEnhanced:
             self.screen.blit(exit_text, (exit_x - exit_text.get_width()//2, exit_y - 35))
 
         # Render NPCs in current room
-        if self.current_room_id == "cabin":
-            for npc in self.npcs:
+        for npc in self.npcs:
+            if npc.room_id == self.current_room_id:
                 sprite = self.sprite_gen.create_npc_sprite()
                 self.screen.blit(sprite, (npc.x - 12, npc.y - 12))
                 text = self.small_font.render(npc.name, True, WHITE)
