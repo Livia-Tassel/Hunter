@@ -3,6 +3,7 @@
 import pygame
 import sys
 import random
+import subprocess
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass, field
 
@@ -78,6 +79,7 @@ class Item:
     y: float
     name: str
     color: Tuple[int, int, int]
+    room_id: str
     picked_up: bool = False
 
 @dataclass
@@ -178,6 +180,7 @@ class Game2DEnhanced:
         self.game_won = False
 
         self.sprite_gen = SpriteGenerator()
+        self.tts_enabled = True
 
     def _create_rooms(self) -> Dict[str, GameRoom]:
         rooms = {}
@@ -228,13 +231,13 @@ class Game2DEnhanced:
 
     def _create_items(self) -> List[Item]:
         return [
-            Item(x=5*TILE_SIZE, y=7*TILE_SIZE, name="火把", color=YELLOW, picked_up=False),
-            Item(x=15*TILE_SIZE, y=7*TILE_SIZE, name="古老的地图", color=BROWN, picked_up=False),
-            Item(x=10*TILE_SIZE, y=10*TILE_SIZE, name="生锈的钥匙", color=GRAY, picked_up=False),
-            Item(x=10*TILE_SIZE, y=5*TILE_SIZE, name="治疗药水", color=RED, picked_up=False),
-            Item(x=10*TILE_SIZE, y=7*TILE_SIZE, name="远古神像", color=BLUE, picked_up=False),
-            Item(x=5*TILE_SIZE, y=5*TILE_SIZE, name="撬棍", color=GRAY, picked_up=False),
-            Item(x=15*TILE_SIZE, y=10*TILE_SIZE, name="绳子", color=BROWN, picked_up=False),
+            Item(x=5*TILE_SIZE, y=7*TILE_SIZE, name="火把", color=YELLOW, room_id="cabin", picked_up=False),
+            Item(x=15*TILE_SIZE, y=7*TILE_SIZE, name="古老的地图", color=BROWN, room_id="cabin", picked_up=False),
+            Item(x=10*TILE_SIZE, y=10*TILE_SIZE, name="生锈的钥匙", color=GRAY, room_id="forest_path", picked_up=False),
+            Item(x=10*TILE_SIZE, y=5*TILE_SIZE, name="治疗药水", color=RED, room_id="forest_path", picked_up=False),
+            Item(x=10*TILE_SIZE, y=7*TILE_SIZE, name="远古神像", color=BLUE, room_id="cave_chamber", picked_up=False),
+            Item(x=5*TILE_SIZE, y=5*TILE_SIZE, name="撬棍", color=GRAY, room_id="cellar", picked_up=False),
+            Item(x=15*TILE_SIZE, y=10*TILE_SIZE, name="绳子", color=BROWN, room_id="deep_forest", picked_up=False),
         ]
 
     def _create_npcs(self) -> List[NPC]:
@@ -268,6 +271,16 @@ class Game2DEnhanced:
             Recipe("torch_oil", "长效火把", ["火把", "油"], "长效火把"),
             Recipe("grappling_hook", "抓钩", ["绳子", "钩子"], "抓钩"),
         ]
+
+    def _speak_text(self, text: str):
+        """Use macOS say command for TTS with Chinese voice"""
+        if self.tts_enabled and sys.platform == "darwin":
+            try:
+                clean_text = text.replace('\n', ' ')
+                subprocess.Popen(['say', '-v', 'Ting-Ting', clean_text],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except:
+                pass
 
     def handle_input(self):
         keys = pygame.key.get_pressed()
@@ -342,6 +355,7 @@ class Game2DEnhanced:
                     idx = event.key - pygame.K_1
                     if idx < len(topics):
                         self.dialogue_text = self.dialogue_npc.dialogue.get(topics[idx], "...")
+                        self._speak_text(self.dialogue_text)
 
         self._check_room_transitions()
 
@@ -372,6 +386,8 @@ class Game2DEnhanced:
                 self.current_room_id = next_room
                 self.player.x = spawn_x * TILE_SIZE
                 self.player.y = spawn_y * TILE_SIZE
+                self.screen.fill(BLACK)
+                pygame.display.flip()
                 break
 
     def _handle_f_key(self):
@@ -411,6 +427,7 @@ class Game2DEnhanced:
                 self.show_dialogue = True
                 self.dialogue_text = npc.dialogue["default"]
                 self.dialogue_npc = npc
+                self._speak_text(self.dialogue_text)
                 return
 
     def _check_achievements(self):
@@ -463,11 +480,19 @@ class Game2DEnhanced:
 
         # Render items in current room
         for item in self.items:
-            if not item.picked_up:
+            if not item.picked_up and item.room_id == self.current_room_id:
                 sprite = self.sprite_gen.create_item_sprite(item.color)
                 self.screen.blit(sprite, (item.x - 8, item.y - 8))
                 text = self.small_font.render(item.name, True, WHITE)
                 self.screen.blit(text, (item.x - text.get_width()//2, item.y - 20))
+
+        # Render exit indicators
+        for exit_name, (next_room, spawn_x, spawn_y) in room.exits.items():
+            exit_x = spawn_x * TILE_SIZE
+            exit_y = spawn_y * TILE_SIZE
+            pygame.draw.rect(self.screen, ORANGE, (exit_x - 16, exit_y - 16, 32, 32), 3)
+            exit_text = self.small_font.render(exit_name, True, ORANGE)
+            self.screen.blit(exit_text, (exit_x - exit_text.get_width()//2, exit_y - 35))
 
         # Render NPCs in current room
         if self.current_room_id == "cabin":
