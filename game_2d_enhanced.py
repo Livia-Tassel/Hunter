@@ -184,6 +184,8 @@ class Game2DEnhanced:
         self.sprite_gen = SpriteGenerator()
         self.tts_enabled = True
         self.transition_cooldown = 0
+        self.feedback_message = ""
+        self.feedback_timer = 0
 
     def _create_rooms(self) -> Dict[str, GameRoom]:
         rooms = {}
@@ -288,6 +290,8 @@ class Game2DEnhanced:
     def handle_input(self):
         if self.transition_cooldown > 0:
             self.transition_cooldown -= 1
+        if self.feedback_timer > 0:
+            self.feedback_timer -= 1
 
         keys = pygame.key.get_pressed()
         dx, dy = 0, 0
@@ -408,6 +412,8 @@ class Game2DEnhanced:
                 room.properties["fireplace_lit"] = True
                 self.player.inventory.remove("火把")
                 self.player.inventory.append("点燃的火把")
+                self.feedback_message = "火把已点燃！火光驱散了黑暗。"
+                self.feedback_timer = 120
                 return
 
         # Coffin interaction
@@ -418,6 +424,10 @@ class Game2DEnhanced:
                 room.properties["coffin_opened"] = True
                 if "远古神像" in self.player.inventory:
                     self.game_won = True
+                    self.feedback_message = "棺材打开了！你找到了传说中的宝藏！"
+                else:
+                    self.feedback_message = "棺材打开了，但里面空空如也..."
+                self.feedback_timer = 120
                 return
 
         # Item pickup
@@ -506,6 +516,31 @@ class Game2DEnhanced:
             exit_text = self.small_font.render(exit_name, True, ORANGE)
             self.screen.blit(exit_text, (exit_x - exit_text.get_width()//2, exit_y - 35))
 
+        # Render interactive objects
+        if self.current_room_id == "cabin":
+            # Fireplace
+            fireplace_x, fireplace_y = 3 * TILE_SIZE, 3 * TILE_SIZE
+            fireplace_lit = room.properties.get("fireplace_lit", False)
+            fireplace_color = ORANGE if fireplace_lit else GRAY
+            pygame.draw.rect(self.screen, fireplace_color, (fireplace_x - 16, fireplace_y - 16, 32, 32))
+            pygame.draw.rect(self.screen, RED if fireplace_lit else DARK_GREEN, (fireplace_x - 12, fireplace_y - 12, 24, 24))
+            if fireplace_lit:
+                # Draw flames
+                for i in range(3):
+                    flame_x = fireplace_x - 8 + i * 8
+                    flame_y = fireplace_y - 20
+                    pygame.draw.circle(self.screen, YELLOW, (flame_x, flame_y), 4)
+
+        if self.current_room_id == "cave_chamber":
+            # Coffin
+            coffin_x, coffin_y = 10 * TILE_SIZE, 7 * TILE_SIZE
+            coffin_opened = room.properties.get("coffin_opened", False)
+            pygame.draw.rect(self.screen, BROWN, (coffin_x - 24, coffin_y - 12, 48, 24))
+            if coffin_opened:
+                pygame.draw.rect(self.screen, YELLOW, (coffin_x - 20, coffin_y - 8, 40, 16))
+            else:
+                pygame.draw.line(self.screen, BLACK, (coffin_x - 24, coffin_y), (coffin_x + 24, coffin_y), 2)
+
         # Render NPCs in current room
         for npc in self.npcs:
             if npc.room_id == self.current_room_id:
@@ -577,6 +612,27 @@ class Game2DEnhanced:
         if self.nearby_item:
             hint = self.font.render(f"按 F 拾取 {self.nearby_item.name}", True, YELLOW)
             self.screen.blit(hint, (SCREEN_WIDTH//2 - hint.get_width()//2, 50))
+
+        # Interactive object hints
+        if self.current_room_id == "cabin":
+            fireplace_x, fireplace_y = 3 * TILE_SIZE, 3 * TILE_SIZE
+            dist = ((self.player.x - fireplace_x) ** 2 + (self.player.y - fireplace_y) ** 2) ** 0.5
+            if dist < 80 and "火把" in self.player.inventory and not room.properties.get("fireplace_lit"):
+                hint = self.font.render("按 F 点燃火把", True, ORANGE)
+                self.screen.blit(hint, (SCREEN_WIDTH//2 - hint.get_width()//2, 50))
+
+        if self.current_room_id == "cave_chamber":
+            coffin_x, coffin_y = 10 * TILE_SIZE, 7 * TILE_SIZE
+            dist = ((self.player.x - coffin_x) ** 2 + (self.player.y - coffin_y) ** 2) ** 0.5
+            if dist < 80 and "撬棍" in self.player.inventory and not room.properties.get("coffin_opened"):
+                hint = self.font.render("按 F 打开棺材", True, ORANGE)
+                self.screen.blit(hint, (SCREEN_WIDTH//2 - hint.get_width()//2, 50))
+
+        # Feedback message
+        if self.feedback_timer > 0:
+            feedback = self.font.render(self.feedback_message, True, YELLOW)
+            pygame.draw.rect(self.screen, BLACK, (SCREEN_WIDTH//2 - feedback.get_width()//2 - 10, 100, feedback.get_width() + 20, 40))
+            self.screen.blit(feedback, (SCREEN_WIDTH//2 - feedback.get_width()//2, 110))
 
     def _render_panel(self, title: str, items: List[str]):
         s = pygame.Surface((400, 400), pygame.SRCALPHA)
