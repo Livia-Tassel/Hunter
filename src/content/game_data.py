@@ -105,6 +105,18 @@ def create_items():
         Item("远古神像", "远古神像", "一个黑色石头雕刻的小神像。", True, item_type="treasure", value=1000),
         Item("绳子", "绳子", "一捆结实的绳子。", True, item_type="tool"),
         Item("布满灰尘的书", "布满灰尘的书", "一本厚重的古书。", True, item_type="document"),
+        # 合成材料
+        Item("油", "油", "一小瓶可燃的油脂。", True, item_type="material", value=10),
+        Item("钩子", "钩子", "一个金属钩子。", True, item_type="material", value=15),
+        Item("草药", "草药", "一些具有治疗功效的草药。", True, item_type="material", value=20),
+        Item("铁丝", "铁丝", "一根细铁丝，可以用来开锁。", True, item_type="material", value=5),
+        Item("墨水", "墨水", "一小瓶黑色墨水。", True, item_type="material", value=10),
+        # 合成结果物品
+        Item("强效治疗药水", "强效治疗药水", "一瓶闪烁着金光的强效治疗药水，可恢复大量生命。", True, item_type="consumable", value=100),
+        Item("长效火把", "长效火把", "涂了油的火把，可以燃烧更长时间。", True, item_type="tool", value=30),
+        Item("抓钩", "抓钩", "可以用来攀爬的抓钩。", True, item_type="tool", value=50),
+        Item("开锁工具", "开锁工具", "一套简易的开锁工具。", True, item_type="tool", value=40),
+        Item("详细地图", "详细地图", "经过墨水标注的详细地图。", True, item_type="document", value=60),
     ]
 
     for item in item_list:
@@ -138,6 +150,43 @@ def create_npcs():
 
     npcs["斗桨先生"] = mr_doujiang
 
+    # 怪物 NPCs
+    cave_bat = NPC(
+        name="洞穴蝙蝠",
+        description="一只巨大的黑色蝙蝠，发出刺耳的叫声。",
+        dialogue={"default": "*嘶嘶*"},
+        health=30,
+        max_health=30,
+        attack_power=8,
+        defense_power=2,
+        hostile=True
+    )
+    npcs["洞穴蝙蝠"] = cave_bat
+
+    forest_wolf = NPC(
+        name="森林狼",
+        description="一只凶猛的灰色野狼，眼中闪烁着危险的光芒。",
+        dialogue={"default": "*低沉咆哮*"},
+        health=50,
+        max_health=50,
+        attack_power=12,
+        defense_power=5,
+        hostile=True
+    )
+    npcs["森林狼"] = forest_wolf
+
+    skeleton_guard = NPC(
+        name="骷髅守卫",
+        description="一具手持生锈长剑的骷髅，似乎在守护着什么。",
+        dialogue={"default": "*骨头碰撞声*"},
+        health=80,
+        max_health=80,
+        attack_power=15,
+        defense_power=8,
+        hostile=True
+    )
+    npcs["骷髅守卫"] = skeleton_guard
+
     return npcs
 
 def create_rooms(items, npcs):
@@ -148,7 +197,7 @@ def create_rooms(items, npcs):
         name="cabin",
         display_name="废弃小屋",
         description="你发现自己在一个摇摇欲坠的废弃小屋里。尘土飞扬，空气中弥漫着霉味。角落里有一个冰冷的[壁炉]。一张破旧的[桌子]放在房间中央。",
-        items=[items['火把'], items['古老的地图']],
+        items=[items['火把'], items['古老的地图'], items['油']],
         npcs=[npcs['斗桨先生']],
         properties={'has_fireplace': True, 'table_searched': False, "fireplace_lit": False},
         ambient_sound="ambient_windy"
@@ -160,7 +209,8 @@ def create_rooms(items, npcs):
     room_forest_path = Room(
         name="forest_path",
         display_name="森林小径",
-        description="你来到一条蜿蜒的森林小径。高大的树木遮天蔽日。地上散落着一些[枯叶]。",
+        description="你来到一条蜿蜒的森林小径。高大的树木遮天蔽日。地上散落着一些[枯叶]。路边有一些[草药]。",
+        items=[items['草药']],
         properties={'leaves_searched': False, 'key_found_here': True},
         ambient_sound="ambient_forest"
     )
@@ -180,8 +230,8 @@ def create_rooms(items, npcs):
     room_cellar = Room(
         name="cellar",
         display_name="阴暗的地下室",
-        description="地下室里阴冷潮湿。墙角堆放着一些破旧的[木箱]。一个[远古神像]放在一个石台上。",
-        items=[items['远古神像']],
+        description="地下室里阴冷潮湿。墙角堆放着一些破旧的[木箱]。一个[远古神像]放在一个石台上。地上散落着一些[铁丝]和[钩子]。",
+        items=[items['远古神像'], items['铁丝'], items['钩子']],
         properties={'crates_searched': False, 'crowbar_found_here': True},
         ambient_sound="ambient_cave"
     )
@@ -191,9 +241,10 @@ def create_rooms(items, npcs):
     room_deep_forest = Room(
         name="deep_forest",
         display_name="森林深处",
-        description="你越往森林深处走，光线就越暗。这里似乎有一个隐蔽的[洞穴入口]。",
+        description="你越往森林深处走，光线就越暗。这里似乎有一个隐蔽的[洞穴入口]。远处传来狼嚎声。",
         items=[items['治疗药水']],
-        properties={'cave_hidden': True},
+        monsters=[npcs['森林狼']],
+        properties={'cave_hidden': True, 'wolf_defeated': False},
         ambient_sound="ambient_forest"
     )
     room_deep_forest.add_exit("南", "forest_path")
@@ -203,9 +254,10 @@ def create_rooms(items, npcs):
     room_cave_entrance = Room(
         name="cave_entrance",
         display_name="洞穴入口",
-        description="这是一个黑暗的洞穴入口，里面吹出阵阵冷风。洞壁上刻着一些奇怪的[符号]。",
-        items=[items['布满灰尘的书']],
-        properties={'symbols_deciphered': False},
+        description="这是一个黑暗的洞穴入口，里面吹出阵阵冷风。洞壁上刻着一些奇怪的[符号]。头顶有蝙蝠飞过的声音。",
+        items=[items['布满灰尘的书'], items['墨水']],
+        monsters=[npcs['洞穴蝙蝠']],
+        properties={'symbols_deciphered': False, 'bat_defeated': False},
         ascii_art_on_enter="cave_entrance",
         ambient_sound="ambient_cave"
     )
@@ -216,8 +268,9 @@ def create_rooms(items, npcs):
     room_cave_chamber = Room(
         name="cave_chamber",
         display_name="洞穴密室",
-        description="在洞穴的深处，你发现了一个宽敞的密室。密室中央有一个古老的[石棺]。旁边散落着一些[金币]。",
-        properties={'treasure_found': False, 'coffin_opened': False},
+        description="在洞穴的深处，你发现了一个宽敞的密室。密室中央有一个古老的[石棺]。旁边散落着一些[金币]。一个[骷髅守卫]守护着这里。",
+        monsters=[npcs['骷髅守卫']],
+        properties={'treasure_found': False, 'coffin_opened': False, 'skeleton_defeated': False},
         ambient_sound="ambient_cave"
     )
     room_cave_chamber.add_exit("离开密室", "cave_entrance")

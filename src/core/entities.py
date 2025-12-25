@@ -56,6 +56,7 @@ class NPC:
     ascii_art_name: Optional[str] = None
     tts_voice_name: Optional[str] = None
     health: int = 100
+    max_health: int = 100
     attack_power: int = 10
     defense_power: int = 5
     hostile: bool = False

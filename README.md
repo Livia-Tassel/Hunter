@@ -156,6 +156,28 @@ deactivate
 - Audio files should be placed in the `sounds/` directory
 - Game saves are stored in `saving/adventure_save.json`
 
+## Automated Testing
+
+The game includes an automated test script that simulates a complete playthrough:
+
+```bash
+# Run automated walkthrough test
+python test_walkthrough.py
+
+# Verbose mode (show all commands)
+python test_walkthrough.py -v
+
+# Custom delay between commands
+python test_walkthrough.py -d 0.1
+```
+
+The test script:
+- Loads commands from `saving/official_walkthrough.txt`
+- Executes all game interactions automatically
+- Fights all monsters in auto-combat mode
+- Verifies the win condition is achieved
+- Reports player stats and exploration progress
+
 ---
 
 **Reconstructed with modular architecture and enhanced terminal UI**

@@ -76,7 +76,8 @@ class GameEngine:
         }
 
     def _init_intro_quest(self):
-        """Add an early quest to guide players through key actions"""
+        """Add quests to guide players through the game"""
+        # Main intro quest
         quest = Quest(
             quest_id="intro_path",
             name="重燃火种",
@@ -86,6 +87,26 @@ class GameEngine:
         )
         self.quest_system.add_quest(quest)
         self.intro_quest = quest
+
+        # Forest exploration quest
+        forest_quest = Quest(
+            quest_id="forest_explorer",
+            name="森林探险者",
+            description="探索森林的每一个角落。",
+            objectives=["探索森林小径", "进入森林深处", "发现隐藏的洞穴"],
+            rewards={"experience": 40, "score": 15, "gold": 50}
+        )
+        self.quest_system.add_quest(forest_quest)
+
+        # Monster hunter quest
+        monster_quest = Quest(
+            quest_id="monster_hunter",
+            name="怪物猎人",
+            description="击败游荡在这片土地上的危险生物。",
+            objectives=["击败洞穴蝙蝠", "击败森林狼", "击败骷髅守卫"],
+            rewards={"experience": 100, "score": 30, "gold": 100}
+        )
+        self.quest_system.add_quest(monster_quest)
 
     def _log_action(self, description: str):
         """Record an action in the player's journal"""
@@ -187,6 +208,8 @@ class GameEngine:
             "talk": lambda: self._handle_talk_command(parts),
             "unlock": lambda: self._handle_unlock_command(parts),
             "open": lambda: self.open_target(target) if target else ui.print_warning("打开什么？"),
+            "attack": lambda: self.attack_monster(target) if target else self.attack_monster(),
+            "stats": lambda: self.show_stats(),
             "help": lambda: self.show_help(),
             "h": lambda: self.show_help(),
             "save": lambda: self.save_game(),
@@ -264,10 +287,17 @@ class GameEngine:
 
         items = [item.display_name for item in current_room.items]
         npcs = [npc.name for npc in current_room.npcs]
+        monsters = [monster.name for monster in current_room.monsters] if current_room.monsters else []
         exits = list(current_room.exits.keys())
 
         ui.print_room(current_room.display_name, current_room.description, items, npcs, exits)
+
+        # Show monsters if present
+        if monsters:
+            ui.print_warning(f"⚔️ 怪物: {', '.join(monsters)}")
+
         self._maybe_trigger_flavor_event(current_room)
+        self._check_monsters(current_room)
 
     def move_player(self, direction: str):
         player = self.game_state.player
@@ -593,7 +623,9 @@ class GameEngine:
             "use [物品] (on [目标]) / u": "使用物品",
             "unlock [目标] with [物品]": "用物品解锁",
             "open [目标]": "打开某物",
+            "attack [怪物]": "攻击房间内的怪物",
             "talk to [NPC] (about [话题])": "与NPC对话",
+            "stats": "查看角色属性",
             "quests": "查看任务",
             "hint": "获取当前位置的提示",
             "map": "查看地图",
@@ -735,11 +767,77 @@ class GameEngine:
             return
         ui.print_journal(entries)
 
+    def attack_monster(self, monster_name: Optional[str] = None):
+        """Attack a monster in the current room"""
+        player = self.game_state.player
+        current_room = self.game_state.rooms.get(player.current_room_id)
+        if not current_room:
+            return
+
+        if not current_room.monsters:
+            ui.print_warning("这里没有可以攻击的怪物。")
+            return
+
+        # Find target monster
+        target = None
+        if monster_name:
+            for monster in current_room.monsters:
+                if monster.name.lower() == monster_name.lower():
+                    target = monster
+                    break
+            if not target:
+                ui.print_error(f"找不到怪物 '{monster_name}'")
+                return
+        else:
+            target = current_room.monsters[0]
+
+        # Start combat
+        if self.combat_system.start_combat(player, target):
+            # Monster defeated
+            current_room.monsters.remove(target)
+            gold_reward = target.attack_power * 5
+            player.add_gold(gold_reward)
+            ui.print_success(f"获得 {gold_reward} 金币！")
+            self._log_action(f"击败了 {target.name}")
+
+            # Check monster hunter achievement
+            if not hasattr(self, '_monsters_defeated'):
+                self._monsters_defeated = 0
+            self._monsters_defeated += 1
+            if self._monsters_defeated >= 3:
+                if self.achievement_system.unlock("survivor"):
+                    ui.print_success("🏆 成就解锁：怪物猎人")
+
+    def show_stats(self):
+        """Show character stats using enhanced panel"""
+        player = self.game_state.player
+        ui.print_stats_panel(
+            player.health, player.max_health, player.level,
+            player.experience, player.strength, player.intelligence,
+            player.defense, player.gold, player.score
+        )
+
+    def _check_monsters(self, room):
+        """Check for monsters and trigger combat if needed"""
+        if not room.monsters:
+            return
+
+        for monster in room.monsters[:]:  # Copy list to avoid modification during iteration
+            if monster.hostile:
+                ui.print_warning(f"\n⚔️ 警告：{monster.name} 注意到了你！")
+                ui.print_message(f"你可以输入 'attack' 进行攻击，或尝试 'go [方向]' 逃离。", "yellow")
+                break
+
     def rest(self):
         """Rest to recover health when safe"""
         player = self.game_state.player
         current_room = self.game_state.rooms.get(player.current_room_id)
         if not current_room:
+            return
+
+        # Check if monsters present
+        if current_room.monsters:
+            ui.print_warning("有怪物在附近，无法休息！")
             return
 
         if current_room.name != "cabin":

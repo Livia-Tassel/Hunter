@@ -6,20 +6,27 @@ import random
 import time
 
 class CombatSystem:
-    def __init__(self, audio_system=None):
+    def __init__(self, audio_system=None, auto_mode: bool = False):
         self.audio = audio_system
         self.in_combat = False
+        self.auto_mode = auto_mode  # 自动战斗模式（用于测试）
 
     def start_combat(self, player: Player, enemy: NPC) -> bool:
         """Returns True if player wins, False if player loses"""
         self.in_combat = True
         ui.print_message(f"\n[bold red]战斗开始！[/] 你遭遇了 {enemy.name}！", "red")
-        time.sleep(1)
+        
+        if not self.auto_mode:
+            time.sleep(1)
 
         while player.health > 0 and enemy.health > 0:
-            ui.print_combat(player.health, player.max_health, enemy.name, enemy.health, 100)
+            ui.print_combat(player.health, player.max_health, enemy.name, enemy.health, enemy.max_health)
 
-            action = ui.get_input("\n[攻击/逃跑] > ")
+            # 自动模式下自动攻击
+            if self.auto_mode:
+                action = "攻击"
+            else:
+                action = ui.get_input("\n[攻击/逃跑] > ")
 
             if action in ["逃跑", "flee", "run"]:
                 if random.random() < 0.5:
@@ -39,10 +46,15 @@ class CombatSystem:
             time.sleep(0.5)
 
             if enemy.health <= 0:
-                ui.print_success(f"\n你击败了 {enemy.name}！")
-                exp_gained = enemy.attack_power * 10
-                player.add_experience(exp_gained)
-                ui.print_message(f"获得 {exp_gained} 点经验！", "yellow")
+                ui.print_monster_defeated(enemy.name, enemy.attack_power * 10, enemy.attack_power * 5)
+                old_level = player.level
+                player.add_experience(enemy.attack_power * 10)
+
+                # Check for level up
+                if player.level > old_level:
+                    ui.print_level_up(player.level)
+                    if self.audio:
+                        self.audio.play_sound("level_up")
 
                 if self.audio:
                     self.audio.play_sound("puzzle_solve")
@@ -118,6 +130,10 @@ class QuestSystem:
 
                 if "score" in quest.rewards:
                     player.score += quest.rewards["score"]
+
+                if "gold" in quest.rewards:
+                    player.add_gold(quest.rewards["gold"])
+                    ui.print_message(f"获得 {quest.rewards['gold']} 金币！", "yellow")
 
                 return True
         return False

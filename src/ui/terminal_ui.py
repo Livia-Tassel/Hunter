@@ -239,4 +239,91 @@ class GameUI:
 
         self.console.print(table)
 
+    def print_stats_panel(self, health: int, max_health: int, level: int,
+                          exp: int, strength: int, intelligence: int,
+                          defense: int, gold: int, score: int):
+        """Display a detailed character stats panel"""
+        # Create health bar
+        hp_percent = health / max_health if max_health > 0 else 0
+        bar_length = 20
+        filled = int(bar_length * hp_percent)
+        hp_bar = "█" * filled + "░" * (bar_length - filled)
+        hp_color = "green" if hp_percent > 0.5 else "yellow" if hp_percent > 0.25 else "red"
+
+        # Create exp bar
+        exp_needed = level * 100
+        exp_percent = exp / exp_needed if exp_needed > 0 else 0
+        exp_filled = int(bar_length * exp_percent)
+        exp_bar = "█" * exp_filled + "░" * (bar_length - exp_filled)
+
+        stats_content = f"""
+[bold cyan]═══════════ 角色属性 ═══════════[/]
+
+[bold white]生命值:[/] [{hp_color}]{hp_bar}[/] {health}/{max_health}
+[bold white]经验值:[/] [blue]{exp_bar}[/] {exp}/{exp_needed}
+
+[bold yellow]⭐ 等级:[/] {level}
+[bold red]⚔ 力量:[/] {strength} [dim](攻击伤害 +{strength//2})[/]
+[bold blue]✧ 智力:[/] {intelligence} [dim](技能效果 +{intelligence//2})[/]
+[bold green]🛡 防御:[/] {defense} [dim](减伤 -{defense})[/]
+
+[bold yellow]💰 金币:[/] {gold}
+[bold magenta]🏆 分数:[/] {score}
+"""
+        self.console.print(Panel(stats_content, border_style="cyan", padding=(0, 2)))
+
+    def print_quests_panel(self, quests: List[tuple]):
+        """Display active quests with progress bars"""
+        if not quests:
+            self.console.print(Panel("[dim]没有进行中的任务[/]", title="[bold yellow]📜 任务[/]", border_style="yellow"))
+            return
+
+        table = Table(title="[bold yellow]📜 当前任务[/]", border_style="yellow", show_header=True)
+        table.add_column("任务", style="cyan", width=20)
+        table.add_column("进度", style="white", width=15)
+        table.add_column("目标", style="white")
+
+        for name, progress, objectives in quests:
+            # Create progress bar
+            completed, total = map(int, progress.split('/'))
+            bar_length = 10
+            filled = int(bar_length * (completed / total)) if total > 0 else 0
+            progress_bar = f"[green]{'█' * filled}[/][dim]{'░' * (bar_length - filled)}[/] {progress}"
+
+            objectives_str = "\n".join([f"{'✓' if i < completed else '○'} {obj}" for i, obj in enumerate(objectives.split(', '))])
+            table.add_row(name, progress_bar, objectives_str)
+
+        self.console.print(table)
+
+    def print_level_up(self, new_level: int):
+        """Display level up celebration"""
+        level_up_art = f"""
+[bold yellow]
+    ╔═══════════════════════════════╗
+    ║                               ║
+    ║   🎉  等 级 提 升 !  🎉       ║
+    ║                               ║
+    ║      ⭐ Lv.{new_level:2d} ⭐              ║
+    ║                               ║
+    ║   属性已提升！                ║
+    ║   生命值上限 +10              ║
+    ║   力量 +2  防御 +1  智力 +1   ║
+    ║                               ║
+    ╚═══════════════════════════════╝
+[/]"""
+        self.console.print(level_up_art)
+
+    def print_combat_log(self, messages: List[str]):
+        """Display combat action log"""
+        for msg in messages:
+            self.console.print(f"  [dim]>[/] {msg}")
+
+    def print_monster_defeated(self, monster_name: str, exp_gained: int, gold_gained: int):
+        """Display monster defeat celebration"""
+        self.console.print(Panel(
+            f"[bold green]⚔️ 击败了 {monster_name}！[/]\n"
+            f"[yellow]✨ 经验 +{exp_gained}[/]  [yellow]💰 金币 +{gold_gained}[/]",
+            border_style="green"
+        ))
+
 ui = GameUI()
