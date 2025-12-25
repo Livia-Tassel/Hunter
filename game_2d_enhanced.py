@@ -48,7 +48,8 @@ class GameRoom:
     tiles: List[List[int]]
     spawn_x: int
     spawn_y: int
-    exits: Dict[str, Tuple[str, int, int]] = field(default_factory=dict)
+    exits: Dict[str, Tuple[str, int, int]] = field(default_factory=dict)  # name -> (target_room, target_x, target_y)
+    exit_positions: Dict[str, Tuple[int, int]] = field(default_factory=dict)  # name -> (exit_tile_x, exit_tile_y)
     properties: Dict[str, any] = field(default_factory=dict)
 
 @dataclass
@@ -159,10 +160,9 @@ class Game2DEnhanced:
             self.title_font = pygame.font.Font(None, 48)
             self.small_font = pygame.font.Font(None, 18)
 
-        self.rooms = self._create_rooms()
-        self.current_room_id = "cabin"
         self.items = self._create_items()
         self.npcs = self._create_npcs()
+        self.monsters = self._create_monsters()
 
         self.achievements = self._init_achievements()
         self.quests = self._init_quests()
@@ -190,47 +190,94 @@ class Game2DEnhanced:
     def _create_rooms(self) -> Dict[str, GameRoom]:
         rooms = {}
 
-        # Cabin - 20x15 tiles
+        # Cabin - 20x15 tiles (玩家出生在中央)
         cabin_tiles = [[2 if (x > 0 and x < 19 and y > 0 and y < 14) else 1 for x in range(20)] for y in range(15)]
-        rooms["cabin"] = GameRoom("cabin", "废弃小屋", cabin_tiles, 10, 7,
-            {"北": ("forest_path", 10, 13), "东": ("dark_cellar_entrance", 18, 7)},
-            {"fireplace_lit": False, "table_searched": False})
+        # 开放北边和东边的门
+        cabin_tiles[1][10] = 2  # 北门
+        cabin_tiles[7][18] = 2  # 东门
+        rooms["cabin"] = GameRoom(
+            id="cabin", name="废弃小屋", tiles=cabin_tiles, spawn_x=10, spawn_y=7,
+            exits={"北": ("forest_path", 10, 13), "东": ("dark_cellar_entrance", 2, 7)},
+            exit_positions={"北": (10, 1), "东": (18, 7)},
+            properties={"fireplace_lit": False, "table_searched": False}
+        )
 
         # Forest Path - 20x15 tiles
-        forest_tiles = [[0 if (x + y) % 5 != 0 else 1 for x in range(20)] for y in range(15)]
-        rooms["forest_path"] = GameRoom("forest_path", "森林小径", forest_tiles, 10, 13,
-            {"南": ("cabin", 10, 1), "北": ("deep_forest", 10, 13)},
-            {"leaves_searched": False})
+        forest_tiles = [[0 for x in range(20)] for y in range(15)]
+        # 添加一些树木作为装饰
+        for y in range(15):
+            for x in range(20):
+                if (x + y) % 5 == 0 and not (x == 10 and (y <= 2 or y >= 12)):
+                    forest_tiles[y][x] = 1
+        rooms["forest_path"] = GameRoom(
+            id="forest_path", name="森林小径", tiles=forest_tiles, spawn_x=10, spawn_y=13,
+            exits={"南": ("cabin", 10, 2), "北": ("deep_forest", 10, 13)},
+            exit_positions={"南": (10, 14), "北": (10, 1)},
+            properties={"leaves_searched": False}
+        )
 
         # Dark Cellar Entrance - 20x15 tiles
         cellar_ent_tiles = [[2 if x > 0 and x < 19 and y > 0 and y < 14 else 1 for x in range(20)] for y in range(15)]
-        rooms["dark_cellar_entrance"] = GameRoom("dark_cellar_entrance", "地下室入口", cellar_ent_tiles, 2, 7,
-            {"西": ("cabin", 1, 7), "下": ("cellar", 10, 1)},
-            {"door_locked": True, "requires_light": True})
+        cellar_ent_tiles[7][1] = 2  # 西门
+        cellar_ent_tiles[13][10] = 2  # 下楼梯
+        rooms["dark_cellar_entrance"] = GameRoom(
+            id="dark_cellar_entrance", name="地下室入口", tiles=cellar_ent_tiles, spawn_x=2, spawn_y=7,
+            exits={"西": ("cabin", 17, 7), "下": ("cellar", 10, 2)},
+            exit_positions={"西": (1, 7), "下": (10, 13)},
+            properties={"door_locked": True, "requires_light": True}
+        )
 
         # Cellar - 20x15 tiles
         cellar_tiles = [[4 for x in range(20)] for y in range(15)]
-        rooms["cellar"] = GameRoom("cellar", "阴暗的地下室", cellar_tiles, 10, 1,
-            {"上": ("dark_cellar_entrance", 10, 13)},
-            {"crates_searched": False})
+        for x in range(20):
+            cellar_tiles[0][x] = 1
+            cellar_tiles[14][x] = 1
+        for y in range(15):
+            cellar_tiles[y][0] = 1
+            cellar_tiles[y][19] = 1
+        rooms["cellar"] = GameRoom(
+            id="cellar", name="阴暗的地下室", tiles=cellar_tiles, spawn_x=10, spawn_y=2,
+            exits={"上": ("dark_cellar_entrance", 10, 12)},
+            exit_positions={"上": (10, 1)},
+            properties={"crates_searched": False}
+        )
 
         # Deep Forest - 20x15 tiles
-        deep_forest_tiles = [[0 if (x * y) % 7 != 0 else 1 for x in range(20)] for y in range(15)]
-        rooms["deep_forest"] = GameRoom("deep_forest", "森林深处", deep_forest_tiles, 10, 13,
-            {"南": ("forest_path", 10, 1), "进入洞穴": ("cave_entrance", 10, 10)},
-            {"cave_hidden": False})
+        deep_forest_tiles = [[0 for x in range(20)] for y in range(15)]
+        for y in range(15):
+            for x in range(20):
+                if (x * y) % 7 == 0 and not (x == 10 and (y <= 2 or y >= 12)) and not (x >= 8 and x <= 12 and y >= 5 and y <= 8):
+                    deep_forest_tiles[y][x] = 1
+        rooms["deep_forest"] = GameRoom(
+            id="deep_forest", name="森林深处", tiles=deep_forest_tiles, spawn_x=10, spawn_y=13,
+            exits={"南": ("forest_path", 10, 2), "进入洞穴": ("cave_entrance", 10, 10)},
+            exit_positions={"南": (10, 14), "进入洞穴": (10, 6)},
+            properties={"cave_hidden": False}
+        )
 
         # Cave Entrance - 20x15 tiles
         cave_ent_tiles = [[4 if x > 2 and x < 17 and y > 2 and y < 12 else 1 for x in range(20)] for y in range(15)]
-        rooms["cave_entrance"] = GameRoom("cave_entrance", "洞穴入口", cave_ent_tiles, 10, 10,
-            {"离开洞穴": ("deep_forest", 10, 7), "深入": ("cave_chamber", 2, 7)},
-            {"symbols_deciphered": False})
+        rooms["cave_entrance"] = GameRoom(
+            id="cave_entrance", name="洞穴入口", tiles=cave_ent_tiles, spawn_x=10, spawn_y=10,
+            exits={"离开洞穴": ("deep_forest", 10, 7), "深入": ("cave_chamber", 3, 7)},
+            exit_positions={"离开洞穴": (10, 12), "深入": (3, 7)},
+            properties={"symbols_deciphered": False}
+        )
 
-        # Cave Chamber - 20x15 tiles
+        # Cave Chamber - 20x15 tiles  
         cave_chamber_tiles = [[4 for x in range(20)] for y in range(15)]
-        rooms["cave_chamber"] = GameRoom("cave_chamber", "洞穴密室", cave_chamber_tiles, 2, 7,
-            {"离开": ("cave_entrance", 18, 7)},
-            {"coffin_opened": False, "treasure_found": False})
+        for x in range(20):
+            cave_chamber_tiles[0][x] = 1
+            cave_chamber_tiles[14][x] = 1
+        for y in range(15):
+            cave_chamber_tiles[y][0] = 1
+            cave_chamber_tiles[y][19] = 1
+        rooms["cave_chamber"] = GameRoom(
+            id="cave_chamber", name="洞穴密室", tiles=cave_chamber_tiles, spawn_x=3, spawn_y=7,
+            exits={"离开": ("cave_entrance", 16, 7)},
+            exit_positions={"离开": (1, 7)},
+            properties={"coffin_opened": False, "treasure_found": False}
+        )
 
         return rooms
 
@@ -254,6 +301,17 @@ class Game2DEnhanced:
             "再见": "去吧，愿你好运，年轻人。\n记住，选择比寻找更重要。"
         }
         return [NPC(x=5*TILE_SIZE, y=5*TILE_SIZE, name="斗桨先生", color=BLUE, dialogue=dialogue, room_id="cabin")]
+
+    def _create_monsters(self) -> List[dict]:
+        """Create hostile monsters in the game world"""
+        return [
+            {"name": "森林狼", "x": 8*TILE_SIZE, "y": 8*TILE_SIZE, "room_id": "deep_forest",
+             "health": 50, "max_health": 50, "attack": 12, "defense": 5, "color": GRAY, "defeated": False},
+            {"name": "洞穴蝙蝠", "x": 15*TILE_SIZE, "y": 5*TILE_SIZE, "room_id": "cave_entrance",
+             "health": 30, "max_health": 30, "attack": 8, "defense": 2, "color": (50, 50, 50), "defeated": False},
+            {"name": "骷髅守卫", "x": 15*TILE_SIZE, "y": 7*TILE_SIZE, "room_id": "cave_chamber",
+             "health": 80, "max_health": 80, "attack": 15, "defense": 8, "color": WHITE, "defeated": False},
+        ]
 
     def _init_achievements(self) -> List[Achievement]:
         return [
@@ -340,12 +398,12 @@ class Game2DEnhanced:
                     self.show_achievements = False
                     self.show_crafting = False
                     self.show_quests = False
-                elif event.key == pygame.K_a:
+                elif event.key == pygame.K_h:  # Changed from K_a to avoid conflict with movement
                     self.show_achievements = not self.show_achievements
                     self.show_inventory = False
                     self.show_crafting = False
                     self.show_quests = False
-                elif event.key == pygame.K_c:
+                elif event.key == pygame.K_r:  # Changed from K_c to R for Recipe
                     self.show_crafting = not self.show_crafting
                     self.show_inventory = False
                     self.show_achievements = False
@@ -355,6 +413,8 @@ class Game2DEnhanced:
                     self.show_inventory = False
                     self.show_achievements = False
                     self.show_crafting = False
+                elif event.key == pygame.K_e:  # Attack key
+                    self._handle_attack()
                 elif event.key == pygame.K_SPACE:
                     self.show_dialogue = False
                 elif event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4] and self.show_dialogue and self.dialogue_npc:
@@ -382,23 +442,44 @@ class Game2DEnhanced:
         tile_x = int(self.player.x // TILE_SIZE)
         tile_y = int(self.player.y // TILE_SIZE)
 
+        # Check each exit using exit_positions for detection
         for exit_name, (next_room, spawn_x, spawn_y) in room.exits.items():
-            if abs(tile_x - spawn_x) < 2 and abs(tile_y - spawn_y) < 2:
-                if next_room == "cellar" and room.properties.get("door_locked"):
-                    if "生锈的钥匙" in self.player.inventory:
-                        room.properties["door_locked"] = False
-                        self.player.inventory.remove("生锈的钥匙")
-                    else:
-                        continue
-                if next_room == "cellar" and room.properties.get("requires_light"):
-                    if "点燃的火把" not in self.player.inventory:
-                        continue
+            exit_pos = room.exit_positions.get(exit_name)
+            if not exit_pos:
+                continue
+            
+            exit_tile_x, exit_tile_y = exit_pos
+            if abs(tile_x - exit_tile_x) < 2 and abs(tile_y - exit_tile_y) < 2:
+                # Check for cellar requirements
+                if next_room == "cellar":
+                    if room.properties.get("door_locked"):
+                        if "生锈的钥匙" in self.player.inventory:
+                            room.properties["door_locked"] = False
+                            self.player.inventory.remove("生锈的钥匙")
+                            self.feedback_message = "你用钥匙打开了门！"
+                            self.feedback_timer = 60
+                        else:
+                            self.feedback_message = "门是锁着的，需要钥匙！"
+                            self.feedback_timer = 60
+                            continue
+                    if room.properties.get("requires_light"):
+                        if "点燃的火把" not in self.player.inventory:
+                            self.feedback_message = "太暗了！需要光源才能前进。"
+                            self.feedback_timer = 60
+                            continue
+                
+                # Transition to next room
                 self.current_room_id = next_room
                 self.player.x = spawn_x * TILE_SIZE
                 self.player.y = spawn_y * TILE_SIZE
                 self.transition_cooldown = 30
+                
+                # Flash screen for transition effect
                 self.screen.fill(BLACK)
                 pygame.display.flip()
+                
+                self.feedback_message = f"进入 {self.rooms[next_room].name}"
+                self.feedback_timer = 60
                 break
 
     def _handle_f_key(self):
@@ -471,6 +552,67 @@ class Game2DEnhanced:
             elif quest.id == "find_statue" and "远古神像" in self.player.inventory:
                 quest.completed = True
 
+    def _handle_attack(self):
+        """Handle attack action against nearby monsters"""
+        import random
+        
+        for monster in self.monsters:
+            if monster["room_id"] == self.current_room_id and not monster["defeated"]:
+                dist = ((self.player.x - monster["x"]) ** 2 + (self.player.y - monster["y"]) ** 2) ** 0.5
+                if dist < 80:
+                    # Player attacks
+                    player_damage = max(1, self.player.level * 5 + random.randint(5, 15) - monster["defense"])
+                    monster["health"] -= player_damage
+                    
+                    if monster["health"] <= 0:
+                        monster["defeated"] = True
+                        exp_gain = monster["attack"] * 10
+                        gold_gain = monster["attack"] * 5
+                        self.player.exp += exp_gain
+                        self.player.gold += gold_gain
+                        
+                        # Level up check
+                        if self.player.exp >= self.player.level * 100:
+                            self.player.level += 1
+                            self.player.max_health += 10
+                            self.player.health = self.player.max_health
+                            self.feedback_message = f"击败 {monster['name']}！升级到 Lv.{self.player.level}！"
+                        else:
+                            self.feedback_message = f"击败 {monster['name']}！获得 {exp_gain} 经验, {gold_gain} 金币！"
+                    else:
+                        # Monster retaliates
+                        monster_damage = max(1, monster["attack"] - self.player.level * 2)
+                        self.player.health -= monster_damage
+                        self.feedback_message = f"对 {monster['name']} 造成 {player_damage} 伤害！受到 {monster_damage} 点反击！"
+                        
+                        if self.player.health <= 0:
+                            self.player.health = 0
+                            self.feedback_message = "你被击败了..."
+                            # Respawn player
+                            self.player.health = self.player.max_health // 2
+                            self.current_room_id = "cabin"
+                            self.player.x = 10 * TILE_SIZE
+                            self.player.y = 7 * TILE_SIZE
+                    
+                    self.feedback_timer = 90
+                    return
+        
+        self.feedback_message = "附近没有可攻击的目标"
+        self.feedback_timer = 60
+
+    def _handle_craft(self):
+        """Handle crafting when player presses craft on a valid recipe"""
+        for recipe in self.recipes:
+            has_all = all(mat in self.player.inventory for mat in recipe.materials)
+            if has_all:
+                for mat in recipe.materials:
+                    self.player.inventory.remove(mat)
+                self.player.inventory.append(recipe.result)
+                self.feedback_message = f"合成成功：{recipe.result}！"
+                self.feedback_timer = 90
+                return True
+        return False
+
     def _check_nearby_item(self):
         self.nearby_item = None
         for item in self.items:
@@ -508,13 +650,15 @@ class Game2DEnhanced:
                 text = self.small_font.render(item.name, True, WHITE)
                 self.screen.blit(text, (item.x - text.get_width()//2, item.y - 20))
 
-        # Render exit indicators
-        for exit_name, (next_room, spawn_x, spawn_y) in room.exits.items():
-            exit_x = spawn_x * TILE_SIZE
-            exit_y = spawn_y * TILE_SIZE
-            pygame.draw.rect(self.screen, ORANGE, (exit_x - 16, exit_y - 16, 32, 32), 3)
-            exit_text = self.small_font.render(exit_name, True, ORANGE)
-            self.screen.blit(exit_text, (exit_x - exit_text.get_width()//2, exit_y - 35))
+        # Render exit indicators using exit_positions
+        for exit_name in room.exits.keys():
+            exit_pos = room.exit_positions.get(exit_name)
+            if exit_pos:
+                exit_x = exit_pos[0] * TILE_SIZE
+                exit_y = exit_pos[1] * TILE_SIZE
+                pygame.draw.rect(self.screen, ORANGE, (exit_x - 16, exit_y - 16, 32, 32), 3)
+                exit_text = self.small_font.render(exit_name, True, ORANGE)
+                self.screen.blit(exit_text, (exit_x - exit_text.get_width()//2, exit_y - 35))
 
         # Render interactive objects
         if self.current_room_id == "cabin":
@@ -549,6 +693,25 @@ class Game2DEnhanced:
                 text = self.small_font.render(npc.name, True, WHITE)
                 self.screen.blit(text, (npc.x - text.get_width()//2, npc.y - 30))
 
+        # Render monsters in current room
+        for monster in self.monsters:
+            if monster["room_id"] == self.current_room_id and not monster["defeated"]:
+                # Draw monster body
+                pygame.draw.rect(self.screen, monster["color"], 
+                               (monster["x"] - 16, monster["y"] - 16, 32, 32))
+                pygame.draw.rect(self.screen, RED, 
+                               (monster["x"] - 16, monster["y"] - 16, 32, 32), 2)
+                
+                # Health bar
+                hp_ratio = monster["health"] / monster["max_health"]
+                bar_width = 40
+                pygame.draw.rect(self.screen, RED, (monster["x"] - 20, monster["y"] - 28, bar_width, 6))
+                pygame.draw.rect(self.screen, GREEN, (monster["x"] - 20, monster["y"] - 28, int(bar_width * hp_ratio), 6))
+                
+                # Monster name
+                text = self.small_font.render(monster["name"], True, RED)
+                self.screen.blit(text, (monster["x"] - text.get_width()//2, monster["y"] - 40))
+
         # Render player
         player_sprite = self.sprite_gen.create_player_sprite(self.player.direction, self.player.animation_frame)
         self.screen.blit(player_sprite, (self.player.x - 12, self.player.y - 12))
@@ -559,14 +722,14 @@ class Game2DEnhanced:
     def _render_ui(self):
         room = self.rooms[self.current_room_id]
 
-        # Status bar
-        status_text = f"{room.name} | HP: {self.player.health}/{self.player.max_health} | Items: {len(self.player.inventory)}"
+        # Enhanced status bar with more info
+        status_text = f"{room.name} | HP: {self.player.health}/{self.player.max_health} | Lv.{self.player.level} | EXP: {self.player.exp} | 金币: {self.player.gold} | 物品: {len(self.player.inventory)}"
         status = self.font.render(status_text, True, YELLOW)
         pygame.draw.rect(self.screen, BLACK, (0, 0, SCREEN_WIDTH, 35))
         self.screen.blit(status, (10, 5))
 
-        # Controls
-        controls = self.small_font.render("WASD:移动 F:交互 I:物品 C:合成 Q:任务 A:成就 ESC:退出", True, WHITE)
+        # Updated controls with correct key bindings
+        controls = self.small_font.render("WASD:移动 F:交互 E:攻击 I:物品 R:合成 Q:任务 H:成就 ESC:退出", True, WHITE)
         self.screen.blit(controls, (10, SCREEN_HEIGHT - 25))
 
         # Win condition
